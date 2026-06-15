@@ -37,7 +37,7 @@ private:
     PresetManager   presetManager;
     SpectrumAnalyzer analyzerBefore, analyzerAfter;
 
-    juce::TextButton loadModelsButton { "Load Models…" };
+    juce::TextButton loadModelsButton { "Load Models..." };
     juce::Label      modelStatusLabel;
     std::unique_ptr<juce::FileChooser> chooser;
 
