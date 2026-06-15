@@ -1,0 +1,27 @@
+# Core
+torch>=2.1
+torchaudio>=2.1
+numpy>=1.24
+scipy>=1.10
+
+# Audio / features
+librosa>=0.10
+soundfile>=0.12
+pyworld>=0.3          # F0 / vocoder analysis utilities
+
+# Data / config
+h5py>=3.9
+pyyaml>=6.0
+pandas>=2.0
+
+# Export
+onnx>=1.15
+onnxruntime>=1.16
+
+# Tooling / logging
+tqdm>=4.66
+tensorboard>=2.15
+matplotlib>=3.7
+
+# Dev
+pytest>=7.4

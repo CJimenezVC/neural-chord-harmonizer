@@ -1,0 +1,5 @@
+model,layer,dtype,mcd_db,f0_rmse_hz,size_kb,notes
+encoder,conv1,fp32,,,,baseline
+encoder,conv2,fp32,,,,baseline
+decoder,conv1,fp32,,,,baseline
+vocoder,gru,fp32,,,,baseline

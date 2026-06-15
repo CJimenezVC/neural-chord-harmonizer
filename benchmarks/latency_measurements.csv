@@ -1,0 +1,10 @@
+stage,avg_ms,peak_ms,notes
+input_buffering,,,512 samples @ 48kHz
+stft,,,512-point FFT
+feature_norm,,,
+encoder,,,150K params
+decoder,,,200K params
+vocoder,,,autoregressive GRU
+overlap_add,,,
+output_delay,,,
+total,,,target 40-50ms

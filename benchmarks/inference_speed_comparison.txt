@@ -1,0 +1,15 @@
+Inference speed comparison (per-frame, 48 kHz, 512-sample frame)
+================================================================
+
+Populate with `benchmark_inference --model <name> --iterations 1000`.
+
+model     backend        avg_us   p95_us   notes
+-------   ------------   -------   ------   -----------------------------
+encoder   RTNeural fp32      TBD      TBD   target ~8ms/frame
+decoder   RTNeural fp32      TBD      TBD   target ~10ms/frame
+vocoder   RTNeural fp32      TBD      TBD   autoregressive, target ~10ms
+encoder   PyTorch (ref)      TBD      TBD   offline reference only
+
+Notes:
+- RTNeural numbers are what matters for real-time; PyTorch is reference.
+- Re-run after enabling SIMD / LTO build flags.

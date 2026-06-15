@@ -1,0 +1,39 @@
+#include "ModelManager.h"
+
+bool ModelManager::loadFromDirectory (const juce::File& dir)
+{
+    loaded.store (false);
+
+    const auto encFile  = dir.getChildFile ("encoder.rtneural");
+    const auto decFile  = dir.getChildFile ("decoder.rtneural");
+    const auto vocFile  = dir.getChildFile ("vocoder.rtneural");
+    const auto infoFile = dir.getChildFile ("model_info.json");
+
+    if (! (encFile.existsAsFile() && decFile.existsAsFile() && vocFile.existsAsFile()))
+        return false;
+
+    parseInfo (infoFile);
+
+    const bool ok = enc.loadModel (encFile)
+                 && dec.loadModel (decFile)
+                 && voc.loadModel (vocFile);
+
+    loaded.store (ok);
+    return ok;
+}
+
+bool ModelManager::parseInfo (const juce::File& infoFile)
+{
+    if (! infoFile.existsAsFile())
+        return false;
+
+    auto json = juce::JSON::parse (infoFile.loadFileAsString());
+    if (! json.isObject())
+        return false;
+
+    modelInfo.styleDim   = (int) json.getProperty ("style_dim", 64);
+    modelInfo.melBins    = (int) json.getProperty ("mel_bins", 128);
+    modelInfo.sampleRate = (double) json.getProperty ("sample_rate", 48000.0);
+    modelInfo.hopLength  = (int) json.getProperty ("hop_length", 128);
+    return true;
+}
