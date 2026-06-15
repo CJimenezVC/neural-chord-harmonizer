@@ -5,20 +5,22 @@ on a modern 4-core processor.
 
 ## Latency Budget
 
-| Stage             | Budget | Source of cost                       |
-| ----------------- | ------ | ------------------------------------ |
-| Input buffering   | 10 ms  | 512-sample frame @ 48 kHz            |
-| STFT analysis     | 5 ms   | 512-point FFT                        |
-| Feature norm      | 2 ms   | memory bandwidth                     |
-| Encoder           | 8 ms   | 150 K params                         |
-| Decoder           | 10 ms  | 200 K params                         |
-| Vocoder           | 10 ms  | autoregressive GRU                   |
-| Overlap-add       | 3 ms   | windowing + sum                      |
-| Output delay      | 2 ms   | ring buffer                          |
-| **Total**         | **50 ms** |                                   |
+| Stage              | Budget | Source of cost                       |
+| ------------------ | ------ | ------------------------------------ |
+| Input buffering    | 10 ms  | 512-sample frame @ 24 kHz (~21 ms window, hop-paced) |
+| Down/up resampling | 2 ms   | Lagrange SRC host ↔ 24 kHz + group delay |
+| STFT analysis      | 5 ms   | 512-point FFT @ 24 kHz               |
+| Feature norm       | 2 ms   | memory bandwidth                     |
+| Encoder            | 8 ms   | 150 K params @ 24 kHz                |
+| Decoder            | 9 ms   | 200 K params @ 24 kHz                |
+| Vocoder            | 9 ms   | autoregressive GRU @ 24 kHz          |
+| Overlap-add        | 3 ms   | windowing + sum                      |
+| Output delay       | 2 ms   | ring buffer                          |
+| **Total**          | **50 ms** |                                   |
 
-Report the true value to the host with `setLatencySamples()` so the DAW can
-compensate.
+Inference at 24 kHz (instead of 48 kHz) roughly halves the per-frame neural
+cost; the resampler trades a small fixed overhead for that saving. Report the
+true value to the host with `setLatencySamples()` so the DAW can compensate.
 
 ## 1. Model Compression
 

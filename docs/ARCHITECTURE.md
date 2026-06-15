@@ -7,6 +7,7 @@ each pipeline stage to the concrete C++ class that implements it.
 
 | Stage              | Class                              | Location                          |
 | ------------------ | ---------------------------------- | --------------------------------- |
+| Host ↔ 24 kHz SRC  | `Resampler`, `SampleFifo`          | `plugin/Source/DSP/`              |
 | Feature extraction | `FeatureExtractor`                 | `plugin/Source/DSP/`              |
 | Pitch detection    | `YINPitchDetector`                 | `plugin/Source/DSP/`              |
 | Formant analysis   | `FormantAnalyzer`                  | `plugin/Source/DSP/`              |
@@ -22,18 +23,23 @@ each pipeline stage to the concrete C++ class that implements it.
 
 ## Data Flow (audio thread)
 
+The host runs at any sample rate; the neural chain runs at a fixed 24 kHz, so
+the block is resampled on the way in and out.
+
 ```
-processBlock(buffer)
-  → CircularAudioBuffer.push(buffer)
-  → while a full frame is available:
-        frame = CircularAudioBuffer.pop(frameSize, hop)
-        features = FeatureExtractor.process(frame)        // mel, F0, formants
+processBlock(buffer)                                   // host rate
+  → hostInFifo.push(buffer)
+  → downsampler: hostInFifo → 24 kHz → CircularAudioBuffer.push
+  → while a full frame is available:                   // all @ 24 kHz
+        frame    = CircularAudioBuffer.pop(frameSize, hop)
+        features = FeatureExtractor.process(frame)      // mel, F0, formants
         style    = EncoderNetwork.encode(features.mel)
         style    = StyleInterpolation.apply(style, params)
         mel'     = DecoderNetwork.decode(features.mel, style)
         wave     = VocoderNetwork.synthesize(mel')
         OverlapAddBuffer.add(wave)
-  → buffer ← OverlapAddBuffer.read(buffer.getNumSamples())
+        modelOutFifo.push(OverlapAddBuffer.read(hop))
+  → upsampler: modelOutFifo → host rate → buffer        // fills numSamples
 ```
 
 ## Threading & Real-Time Safety

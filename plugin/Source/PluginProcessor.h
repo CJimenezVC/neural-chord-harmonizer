@@ -7,6 +7,8 @@
 #include "DSP/CircularAudioBuffer.h"
 #include "DSP/FeatureExtractor.h"
 #include "DSP/OverlapAddBuffer.h"
+#include "DSP/Resampler.h"
+#include "DSP/SampleFifo.h"
 #include "ML/ModelManager.h"
 #include "ML/NeuralAudioProcessor.h"
 #include "Parameters/StyleInterpolation.h"
@@ -14,8 +16,11 @@
 /**
     Main audio processor for Adaptive Voice Transform.
 
-    Streams input audio through the hybrid DSP-neural chain:
-    feature extraction → encoder → style modulation → decoder → vocoder.
+    Dual sample-rate design: the host runs at any rate (typically 48 kHz) but
+    the neural models run at a fixed 24 kHz. The block is downsampled to 24 kHz,
+    pushed through the hybrid DSP-neural chain (feature extraction → encoder →
+    style modulation → decoder → vocoder), then upsampled back to the host rate.
+
     All heavy buffers are pre-allocated in prepareToPlay(); processBlock() is
     real-time safe (no allocations, no locks).
 */
@@ -61,15 +66,26 @@ private:
     FeatureExtractor    featureExtractor;
     NeuralAudioProcessor neuralProcessor;
 
-    CircularAudioBuffer inputBuffer;
-    OverlapAddBuffer    outputBuffer;
+    // Fixed model inference rate; the host stream is resampled to/from this.
+    static constexpr double modelSampleRate = 24000.0;
 
-    int frameSize = 512;
-    int hopSize   = 128;
+    Resampler   downsampler;   // host rate → 24 kHz
+    Resampler   upsampler;     // 24 kHz   → host rate
+    SampleFifo  hostInFifo;    // host-rate input awaiting downsampling
+    SampleFifo  modelOutFifo;  // 24 kHz vocoder output awaiting upsampling
+
+    CircularAudioBuffer inputBuffer;    // 24 kHz analysis-frame ring
+    OverlapAddBuffer    outputBuffer;   // 24 kHz overlap-add reconstruction
+
+    double hostSampleRate = 48000.0;
+    int frameSize = 512;   // model-rate (24 kHz) analysis frame
+    int hopSize   = 128;   // model-rate hop
 
     // Pre-allocated scratch buffers (audio thread must not allocate).
-    std::vector<float> scratchFrame;
-    std::vector<float> scratchAudio;
+    std::vector<float> scratchFrame;   // one analysis frame (24 kHz)
+    std::vector<float> scratchAudio;   // vocoder output for one frame (24 kHz)
+    std::vector<float> downScratch;    // downsampled block (24 kHz)
+    std::vector<float> olaScratch;     // hop-sized OLA drain (24 kHz)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AdaptiveVoiceTransformProcessor)
 };

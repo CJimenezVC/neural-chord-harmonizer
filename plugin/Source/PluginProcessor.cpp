@@ -1,5 +1,8 @@
 #include "PluginProcessor.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "PluginEditor.h"
 
 namespace ParamID
@@ -44,20 +47,40 @@ AdaptiveVoiceTransformProcessor::createParameterLayout()
 
 void AdaptiveVoiceTransformProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    juce::ignoreUnused (samplesPerBlock);
+    hostSampleRate = sampleRate;
 
-    featureExtractor.prepare (sampleRate, frameSize, hopSize);
-    neuralProcessor.prepare (sampleRate, frameSize);
+    // DSP + neural stages all operate at the fixed model rate (24 kHz).
+    featureExtractor.prepare (modelSampleRate, frameSize, hopSize);
+    neuralProcessor.prepare (modelSampleRate, frameSize);
     neuralProcessor.setModels (&modelManager);
+
+    downsampler.prepare (hostSampleRate, modelSampleRate);   // ratio = host/24k
+    upsampler.prepare   (modelSampleRate, hostSampleRate);   // ratio = 24k/host
 
     inputBuffer.prepare (frameSize, hopSize, 1);
     outputBuffer.prepare (frameSize, hopSize, 1);
 
+    // Worst-case model samples per host block (host rate > model rate).
+    const double toModel = modelSampleRate / hostSampleRate;
+    const int maxModelPerBlock = (int) std::ceil (samplesPerBlock * toModel) + 4;
+
     scratchFrame.assign ((size_t) frameSize, 0.0f);
     scratchAudio.assign ((size_t) frameSize, 0.0f);
+    downScratch.assign  ((size_t) std::max (maxModelPerBlock, frameSize), 0.0f);
+    olaScratch.assign   ((size_t) hopSize, 0.0f);
 
-    // Report processing latency to the host so it can compensate.
-    setLatencySamples (frameSize + 4 * hopSize);
+    // Generous FIFO headroom so the audio thread never reallocates.
+    hostInFifo.prepare  (samplesPerBlock * 4 + 64);
+    modelOutFifo.prepare (frameSize * 8 + maxModelPerBlock + 64);
+
+    downsampler.reset();
+    upsampler.reset();
+    hostInFifo.reset();
+    modelOutFifo.reset();
+
+    // Latency = model-rate frame + lookahead, expressed in host samples.
+    const double toHost = hostSampleRate / modelSampleRate;
+    setLatencySamples ((int) std::ceil ((frameSize + 4 * hopSize) * toHost));
 }
 
 void AdaptiveVoiceTransformProcessor::releaseResources()
@@ -65,6 +88,10 @@ void AdaptiveVoiceTransformProcessor::releaseResources()
     neuralProcessor.reset();
     inputBuffer.reset();
     outputBuffer.reset();
+    downsampler.reset();
+    upsampler.reset();
+    hostInFifo.reset();
+    modelOutFifo.reset();
 }
 
 bool AdaptiveVoiceTransformProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -91,29 +118,50 @@ void AdaptiveVoiceTransformProcessor::processBlock (juce::AudioBuffer<float>& bu
     juce::ScopedNoDenormals noDenormals;
 
     const int numSamples = buffer.getNumSamples();
-    const auto params = readStyleParams();
-    neuralProcessor.setStyleParams (params);
+    neuralProcessor.setStyleParams (readStyleParams());
 
     if (! modelManager.isLoaded())
         return;   // pass-through until models are available
 
-    const float* in = buffer.getReadPointer (0);
-    inputBuffer.push (in, numSamples);
-
-    // Drain whole frames from the input ring buffer.
-    std::vector<float>& frame = scratchFrame;     // pre-allocated
-    while (inputBuffer.pop (frame.data(), frameSize, hopSize))
+    // 1) Downsample the host block to 24 kHz and queue it for analysis.
+    hostInFifo.push (buffer.getReadPointer (0), numSamples);
     {
-        const auto features = featureExtractor.process (frame.data(), frameSize);
-        const int produced  = neuralProcessor.processFrame (features,
-                                                            scratchAudio.data(),
-                                                            (int) scratchAudio.size());
-        outputBuffer.add (scratchAudio.data(), produced);
+        // Produce as many 24 kHz samples as the buffered host input allows,
+        // capped to the scratch size; the FIFO retains any unused remainder.
+        int wantModel = (int) std::floor (hostInFifo.size() / downsampler.getSpeedRatio()) - 1;
+        wantModel = std::min (wantModel, (int) downScratch.size());
+        if (wantModel > 0)
+        {
+            const int used = downsampler.process (hostInFifo.data(), downScratch.data(), wantModel);
+            hostInFifo.consume (used);
+            inputBuffer.push (downScratch.data(), wantModel);
+        }
     }
 
-    // Emit reconstructed audio.
+    // 2) Run the neural chain on every complete 24 kHz analysis frame, draining
+    //    the hop-sized reconstruction into the model-rate output FIFO.
+    while (inputBuffer.pop (scratchFrame.data(), frameSize, hopSize))
+    {
+        const auto features = featureExtractor.process (scratchFrame.data(), frameSize);
+        const int produced  = neuralProcessor.processFrame (features, scratchAudio.data(),
+                                                            (int) scratchAudio.size());
+        outputBuffer.add (scratchAudio.data(), produced);
+
+        const int ready = outputBuffer.read (olaScratch.data(), hopSize);
+        modelOutFifo.push (olaScratch.data(), ready);
+    }
+
+    // 3) Upsample 24 kHz output back to the host rate, filling the block exactly.
     float* out = buffer.getWritePointer (0);
-    outputBuffer.read (out, numSamples);
+    if (modelOutFifo.size() >= upsampler.inputSamplesNeeded (numSamples))
+    {
+        const int used = upsampler.process (modelOutFifo.data(), out, numSamples);
+        modelOutFifo.consume (used);
+    }
+    else
+    {
+        std::fill (out, out + numSamples, 0.0f);   // still filling initial latency
+    }
 
     for (int ch = 1; ch < buffer.getNumChannels(); ++ch)
         buffer.copyFrom (ch, 0, out, numSamples);

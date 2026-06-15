@@ -21,15 +21,20 @@ suitable for DAW use.
 ## Architecture at a Glance
 
 ```
-Input (48 kHz)
+Input (host rate, e.g. 48 kHz)
+  → Downsample to 24 kHz
   → Feature Extraction (STFT, mel-spectrogram, YIN F0, formants)
   → Neural Encoder (mel → 64-dim style vector)
   → Style Modulation (user parameter interpolation)
   → Neural Decoder ((mel, style) → transformed mel)
   → WaveRNN Vocoder (mel → waveform)
   → Post-DSP refinement (overlap-add, artifact suppression)
-Output (48 kHz, ~40 ms latency)
+  → Upsample to host rate
+Output (host rate, ~40 ms latency)
 ```
+
+The neural models run at **24 kHz** (VCC2020's native rate) to halve compute;
+the plugin resamples to/from the host rate around the neural chain.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`TECHNICAL.md`](TECHNICAL.md)
 for the detailed design.

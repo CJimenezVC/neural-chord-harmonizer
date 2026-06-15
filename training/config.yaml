@@ -1,13 +1,16 @@
 # Adaptive Voice Transform — training configuration
 
+# Models train and run inference at 24 kHz (VCC2020's native rate). The plugin
+# resamples the host stream (e.g. 48 kHz) down to 24 kHz for inference and back
+# up to the host rate for output — see plugin/Source/DSP/Resampler.h.
 audio:
-  sample_rate: 48000
-  n_fft: 512
-  hop_length: 128        # 75% overlap
+  sample_rate: 24000
+  n_fft: 512             # ~21.3 ms window @ 24 kHz
+  hop_length: 128        # ~5.3 ms hop, 75% overlap
   win_length: 512
   n_mels: 128
   fmin: 20
-  fmax: 8000
+  fmax: 8000             # well under the 12 kHz Nyquist @ 24 kHz
   f0_min: 50
   f0_max: 500
 

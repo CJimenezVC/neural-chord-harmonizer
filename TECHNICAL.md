@@ -25,9 +25,11 @@ streaming-safe during inference.
 ## 2. Audio Processing Pipeline
 
 ```
-Input Audio (48 kHz)
+Input Audio (host rate, e.g. 48 kHz)
   │
-  ├─ [Feature Extraction DSP]
+  ├─ [Downsample]       host rate → 24 kHz (Lagrange resampler)
+  │
+  ├─ [Feature Extraction DSP]   @ 24 kHz
   │    STFT (512, 75% overlap) → mel (128 bins) → YIN F0 → formants
   │
   ├─ [Neural Encoder]   mel → style vector (64-d)
@@ -36,22 +38,39 @@ Input Audio (48 kHz)
   │
   ├─ [Neural Decoder]   (mel ⊕ style) → transformed mel (128 bins)
   │
-  ├─ [WaveRNN Vocoder]  mel → waveform
+  ├─ [WaveRNN Vocoder]  mel → waveform @ 24 kHz
   │
-  └─ [Post-DSP]         overlap-add, spectral smoothing, artifact suppression
+  ├─ [Post-DSP]         overlap-add, spectral smoothing, artifact suppression
   │
-Output Audio (48 kHz, ~40 ms latency)
+  └─ [Upsample]         24 kHz → host rate (Lagrange resampler)
+  │
+Output Audio (host rate, ~40 ms latency)
 ```
+
+### Dual sample-rate design
+
+The models are trained and run **at 24 kHz** (VCC2020's native rate) to halve
+compute and memory versus 48 kHz. The plugin presents the host's rate (any rate;
+typically 48 kHz) and brackets the neural chain with resamplers:
+
+- **Downsample** host → 24 kHz before feature extraction.
+- **Upsample** 24 kHz → host after the vocoder.
+
+Both use `juce::LagrangeInterpolator` (see `plugin/Source/DSP/Resampler.h`), fed
+from small FIFOs so fractional sample-rate ratios (e.g. 44.1 kHz hosts) don't
+drift. Speech energy lives well below the 12 kHz Nyquist at 24 kHz, so the
+perceptual cost is negligible while compute drops ~2×.
 
 ### Frame parameters
 
 | Parameter        | Value                                  |
 | ---------------- | -------------------------------------- |
-| Sample rate      | 48 kHz                                 |
-| STFT window      | 512 samples (~10.7 ms)                 |
-| Overlap          | 75 % (hop = 128 samples)               |
+| Host sample rate | any (typ. 48 kHz)                      |
+| Model sample rate| 24 kHz (fixed)                         |
+| STFT window      | 512 samples @ 24 kHz (~21.3 ms)        |
+| Overlap          | 75 % (hop = 128 samples, ~5.3 ms)      |
 | Mel bins         | 128 (20 Hz – 8 kHz)                    |
-| Frame rate       | ~375 frames/s (hop 128) / ~47 fps (hop 1024 windows) |
+| Frame rate       | ~187 frames/s (hop 128 @ 24 kHz)       |
 | F0 range         | 50 – 500 Hz (YIN)                      |
 | Lookahead        | 4 frames (vocoder stability)           |
 
@@ -116,26 +135,32 @@ zipper noise, then applied before the decoder.
 
 ### Strategy
 
+- **Resampler FIFOs** bridge host rate ↔ 24 kHz without drift.
 - **Circular buffers** for continuous input/output.
 - **Overlap-add** reconstruction rather than batch processing.
 - **RNN state management** so the GRU carries across frames.
 - **4-frame lookahead** absorbs vocoder transients.
 - **Latency compensation** reported to the host via
-  `AudioProcessor::setLatencySamples`.
+  `AudioProcessor::setLatencySamples` (frame + lookahead, converted to host
+  samples, plus resampler group delay).
 
 ### Latency budget (target 40–50 ms)
 
-| Stage             | Budget |
-| ----------------- | ------ |
-| Input buffering   | 10 ms  |
-| STFT analysis     | 5 ms   |
-| Feature norm      | 2 ms   |
-| Encoder           | 8 ms   |
-| Decoder           | 10 ms  |
-| Vocoder           | 10 ms  |
-| Overlap-add       | 3 ms   |
-| Output delay      | 2 ms   |
-| **Total**         | **50 ms** |
+| Stage                | Budget |
+| -------------------- | ------ |
+| Input buffering      | 10 ms  |
+| Down/up resampling   | 2 ms   |
+| STFT analysis        | 5 ms   |
+| Feature norm         | 2 ms   |
+| Encoder              | 8 ms   |
+| Decoder              | 9 ms   |
+| Vocoder              | 9 ms   |
+| Overlap-add          | 3 ms   |
+| Output delay         | 2 ms   |
+| **Total**            | **50 ms** |
+
+> Running inference at 24 kHz roughly halves the encoder/decoder/vocoder cost
+> versus 48 kHz; the resampler adds a small fixed overhead and group delay.
 
 See [`docs/REAL_TIME_OPTIMIZATION.md`](docs/REAL_TIME_OPTIMIZATION.md).
 
