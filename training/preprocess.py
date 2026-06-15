@@ -42,33 +42,44 @@ def compute_f0(y: np.ndarray, a: dict) -> np.ndarray:
 
 def iter_audio_files(root: Path):
     for ext in ("*.wav", "*.flac"):
-        yield from root.rglob(ext)
+        for p in root.rglob(ext):
+            # Skip macOS archive cruft (__MACOSX/ and ._ resource forks).
+            if "__MACOSX" in p.parts or p.name.startswith("._"):
+                continue
+            yield p
 
 
-def preprocess(cfg: dict) -> None:
+def preprocess(cfg: dict, max_files: int | None = None) -> None:
     a = cfg["audio"]
     out_dir = Path(cfg["data"]["features_train"]).parent
     out_dir.mkdir(parents=True, exist_ok=True)
 
     datasets_root = Path("../data/datasets")
     targets = {
-        # VCC2020 ZIPs extract to vcc2020/vcc2020_training/<SPEAKER>/*.wav
-        "train": (datasets_root / "vcc2020" / "vcc2020_training", cfg["data"]["features_train"]),
+        # VCC2020 ZIPs extract to vcc2020/{source,target_task1,target_task2}/<SPK>/*.wav
+        "train": (datasets_root / "vcc2020", cfg["data"]["features_train"]),
         "eval": (datasets_root / "cmu_arctic", cfg["data"]["features_eval"]),
     }
 
     mel_acc: list[np.ndarray] = []
     for name, (src, out_path) in targets.items():
-        files = list(iter_audio_files(src))
+        files = sorted(iter_audio_files(src))
+        if max_files is not None:
+            # Stride-sample so a capped run still spans multiple speakers.
+            files = files[:: max(1, len(files) // max_files)][:max_files] if files else files
         if not files:
             print(f"[warn] no audio under {src} — run download_datasets.sh first")
             continue
+        print(f"[{name}] {len(files)} files -> {out_path}", flush=True)
         with h5py.File(out_path, "w") as h5:
             for f in tqdm(files, desc=f"features:{name}"):
                 y = load_audio(f, a["sample_rate"])
                 mel, f0 = compute_mel(y, a), compute_f0(y, a)
                 n = min(len(mel), len(f0))
-                grp = h5.create_group(f.stem)
+                # Key by speaker + file: parallel utterances share a filename
+                # across speakers (e.g. SEF1/E10001 vs TEF1/E10001).
+                key = f"{f.parent.name}_{f.stem}"
+                grp = h5.create_group(key)
                 grp.create_dataset("mel", data=mel[:n], compression="gzip")
                 grp.create_dataset("f0", data=f0[:n], compression="gzip")
                 if name == "train":
@@ -105,11 +116,14 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--make-splits", action="store_true")
+    ap.add_argument("--max-files", type=int, default=None,
+                    help="cap files per split (quick subset; spans speakers)")
     ap.add_argument("--seed", type=int, default=1234)
     args = ap.parse_args()
     cfg = yaml.safe_load(open(args.config))
     if args.make_splits:
         make_splits(cfg, args.seed)
     else:
-        preprocess(cfg)
+        preprocess(cfg, max_files=args.max_files)
+        make_splits(cfg, cfg["training"]["seed"])
         make_splits(cfg, cfg["training"]["seed"])

@@ -19,7 +19,7 @@ class VoiceFeatureDataset(Dataset):
     """Yields ``window_frames``-length mel windows from an HDF5 feature file."""
 
     def __init__(self, h5_path: str, split_file: str | None, window_frames: int,
-                 stats_path: str | None = None):
+                 stats_path: str | None = None, limit: int | None = None):
         self.h5_path = h5_path
         self.window_frames = window_frames
         self._h5: h5py.File | None = None
@@ -30,6 +30,9 @@ class VoiceFeatureDataset(Dataset):
         if split_file and Path(split_file).exists():
             wanted = set(Path(split_file).read_text().split())
             self.keys = [k for k in self.keys if k in wanted]
+
+        if limit is not None:
+            self.keys = self.keys[:limit]
 
         self.mel_mean = self.mel_std = None
         if stats_path and Path(stats_path).exists():
@@ -71,12 +74,18 @@ class VoiceFeatureDataset(Dataset):
 def build_dataloaders(cfg: dict) -> tuple[DataLoader, DataLoader]:
     d, t = cfg["data"], cfg["training"]
     splits = Path(d["splits_dir"])
+    limit = d.get("limit")
+    # train and val are both drawn from the training HDF5 (make_splits writes
+    # train/val/test manifests over its keys); the eval HDF5 is reserved for
+    # the held-out test set used by evaluate.py.
     train_ds = VoiceFeatureDataset(d["features_train"], str(splits / "train.txt"),
-                                   t["window_frames"], d["stats"])
-    val_ds = VoiceFeatureDataset(d["features_eval"], str(splits / "val.txt"),
-                                 t["window_frames"], d["stats"])
+                                   t["window_frames"], d["stats"], limit=limit)
+    val_ds = VoiceFeatureDataset(d["features_train"], str(splits / "val.txt"),
+                                 t["window_frames"], d["stats"], limit=limit)
+    # pin_memory only helps for CUDA; MPS/CPU don't benefit and it can warn.
+    pin = torch.cuda.is_available()
     train_dl = DataLoader(train_ds, batch_size=t["batch_size"], shuffle=True,
-                          num_workers=t["num_workers"], drop_last=True, pin_memory=True)
+                          num_workers=t["num_workers"], drop_last=True, pin_memory=pin)
     val_dl = DataLoader(val_ds, batch_size=t["batch_size"], shuffle=False,
-                        num_workers=t["num_workers"], pin_memory=True)
+                        num_workers=t["num_workers"], pin_memory=pin)
     return train_dl, val_dl
