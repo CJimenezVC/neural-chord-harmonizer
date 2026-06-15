@@ -2,12 +2,13 @@
 
 #include <vector>
 
-#include <juce_dsp/juce_dsp.h>
+#include "SimpleFFT.h"
 
 /**
-    STFT magnitude and log-mel projection. Wraps juce::dsp::FFT and a
-    precomputed triangular mel filterbank. All scratch buffers are allocated in
-    prepare().
+    STFT (power spectrum + phase) and log-mel projection, plus mel-inversion
+    resynthesis. JUCE-free (uses SimpleFFT) so the identical code runs in the
+    plugin and in the pybind11 training binding. All scratch buffers are
+    allocated in prepare().
 */
 class SpectrogramProcessor
 {
@@ -51,15 +52,15 @@ public:
 private:
     void buildMelFilterbank (double sampleRate, float fMin, float fMax);
     void buildInverseMel();
+    void forwardFFT (const float* frame, int numSamples);   // -> reBuf/imBuf
 
-    std::unique_ptr<juce::dsp::FFT> fft;
+    SimpleFFT fft;
     int fftSize = 512;
     int numBins = 257;
     int numMels = 128;
 
     std::vector<float> window;
-    std::vector<float> fftBuffer;                  // 2 * fftSize for JUCE FFT
-    std::vector<float> ifftBuffer;                 // 2 * fftSize for inverse
+    std::vector<float> reBuf, imBuf;               // fftSize complex work buffers
     std::vector<std::vector<float>> melFilters;    // [numMels][numBins]
     std::vector<float> colNorm;                    // [numBins] diagonal inverse-mel norm
     std::vector<float> melLinScratch;              // [numMels]

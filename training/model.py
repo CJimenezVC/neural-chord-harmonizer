@@ -20,8 +20,10 @@ class ConvEncoder(nn.Module):
 
     def __init__(self, mel_bins: int = 128, channels: int = 256, style_dim: int = 64):
         super().__init__()
-        self.conv1 = nn.Conv1d(mel_bins, channels, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv1d(channels, channels, kernel_size=3, padding=1)
+        # kernel_size=1 (pointwise): the plugin runs these per-frame, so a 1-tap
+        # conv makes single-frame inference exactly match training.
+        self.conv1 = nn.Conv1d(mel_bins, channels, kernel_size=1)
+        self.conv2 = nn.Conv1d(channels, channels, kernel_size=1)
         self.fc1 = nn.Linear(channels, 128)
         self.fc2 = nn.Linear(128, style_dim)
 
@@ -42,9 +44,10 @@ class ConvDecoder(nn.Module):
     def __init__(self, mel_bins: int = 128, style_dim: int = 64, channels: int = 256):
         super().__init__()
         in_ch = mel_bins + style_dim
-        self.conv1 = nn.Conv1d(in_ch, channels, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv1d(channels, channels, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv1d(channels, channels, kernel_size=3, padding=1)
+        # kernel_size=1 (pointwise) for exact per-frame inference in the plugin.
+        self.conv1 = nn.Conv1d(in_ch, channels, kernel_size=1)
+        self.conv2 = nn.Conv1d(channels, channels, kernel_size=1)
+        self.conv3 = nn.Conv1d(channels, channels, kernel_size=1)
         self.fc1 = nn.Linear(channels, channels)
         self.fc2 = nn.Linear(channels, mel_bins)
 
@@ -73,10 +76,10 @@ class WaveRNNVocoder(nn.Module):
     def __init__(self, mel_bins: int = 128, gru_hidden: int = 64, quant_bins: int = 256):
         super().__init__()
         self.cond = nn.Sequential(
-            nn.Conv1d(mel_bins, mel_bins, 3, padding=1), nn.ReLU(),
-            nn.Conv1d(mel_bins, mel_bins, 3, padding=1), nn.ReLU(),
-            nn.Conv1d(mel_bins, mel_bins, 3, padding=1), nn.ReLU(),
-            nn.Conv1d(mel_bins, mel_bins, 3, padding=1), nn.ReLU(),
+            nn.Conv1d(mel_bins, mel_bins, 1), nn.ReLU(),
+            nn.Conv1d(mel_bins, mel_bins, 1), nn.ReLU(),
+            nn.Conv1d(mel_bins, mel_bins, 1), nn.ReLU(),
+            nn.Conv1d(mel_bins, mel_bins, 1), nn.ReLU(),
         )
         self.gru = nn.GRU(mel_bins, gru_hidden, batch_first=True)
         self.out = nn.Linear(gru_hidden, quant_bins)

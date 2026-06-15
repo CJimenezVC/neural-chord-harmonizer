@@ -17,14 +17,14 @@ void SpectrogramProcessor::prepare (double sampleRate, int size, int nMels,
     numBins = size / 2 + 1;
     numMels = nMels;
 
-    fft = std::make_unique<juce::dsp::FFT> ((int) std::log2 ((double) size));
+    fft.prepare (size);
 
     window.resize ((size_t) size);
     for (int n = 0; n < size; ++n)
         window[(size_t) n] = 0.5f - 0.5f * std::cos (2.0f * kPi * n / (float) (size - 1));
 
-    fftBuffer.assign ((size_t) (2 * size), 0.0f);
-    ifftBuffer.assign ((size_t) (2 * size), 0.0f);
+    reBuf.assign ((size_t) size, 0.0f);
+    imBuf.assign ((size_t) size, 0.0f);
     melLinScratch.assign ((size_t) numMels, 0.0f);
     magScratch.assign ((size_t) numBins, 0.0f);
     buildMelFilterbank (sampleRate, fMin, fMax);
@@ -33,8 +33,8 @@ void SpectrogramProcessor::prepare (double sampleRate, int size, int nMels,
 
 void SpectrogramProcessor::reset()
 {
-    std::fill (fftBuffer.begin(), fftBuffer.end(), 0.0f);
-    std::fill (ifftBuffer.begin(), ifftBuffer.end(), 0.0f);
+    std::fill (reBuf.begin(), reBuf.end(), 0.0f);
+    std::fill (imBuf.begin(), imBuf.end(), 0.0f);
 }
 
 void SpectrogramProcessor::buildInverseMel()
@@ -96,38 +96,32 @@ void SpectrogramProcessor::buildMelFilterbank (double sampleRate, float fMin, fl
 
 void SpectrogramProcessor::computeMagnitude (const float* frame, int numSamples, float* magOut)
 {
-    const int n = std::min (numSamples, fftSize);
-    std::fill (fftBuffer.begin(), fftBuffer.end(), 0.0f);
-    for (int i = 0; i < n; ++i)
-        fftBuffer[(size_t) i] = frame[i] * window[(size_t) i];
-
-    fft->performRealOnlyForwardTransform (fftBuffer.data());
-
+    forwardFFT (frame, numSamples);
     for (int k = 0; k < numBins; ++k)
-    {
-        const float re = fftBuffer[(size_t) (2 * k)];
-        const float im = fftBuffer[(size_t) (2 * k + 1)];
-        magOut[k] = re * re + im * im;            // power (matches librosa default)
-    }
+        magOut[k] = reBuf[(size_t) k] * reBuf[(size_t) k]
+                  + imBuf[(size_t) k] * imBuf[(size_t) k];   // power (librosa default)
 }
 
 void SpectrogramProcessor::computeMagnitudeAndPhase (const float* frame, int numSamples,
                                                      float* magOut, float* phaseOut)
 {
-    const int n = std::min (numSamples, fftSize);
-    std::fill (fftBuffer.begin(), fftBuffer.end(), 0.0f);
-    for (int i = 0; i < n; ++i)
-        fftBuffer[(size_t) i] = frame[i] * window[(size_t) i];
-
-    fft->performRealOnlyForwardTransform (fftBuffer.data());
-
+    forwardFFT (frame, numSamples);
     for (int k = 0; k < numBins; ++k)
     {
-        const float re = fftBuffer[(size_t) (2 * k)];
-        const float im = fftBuffer[(size_t) (2 * k + 1)];
+        const float re = reBuf[(size_t) k], im = imBuf[(size_t) k];
         magOut[k]   = re * re + im * im;          // power (matches librosa default)
         phaseOut[k] = std::atan2 (im, re);
     }
+}
+
+void SpectrogramProcessor::forwardFFT (const float* frame, int numSamples)
+{
+    const int n = std::min (numSamples, fftSize);
+    std::fill (reBuf.begin(), reBuf.end(), 0.0f);
+    std::fill (imBuf.begin(), imBuf.end(), 0.0f);
+    for (int i = 0; i < n; ++i)
+        reBuf[(size_t) i] = frame[i] * window[(size_t) i];
+    fft.transform (reBuf.data(), imBuf.data(), false);
 }
 
 void SpectrogramProcessor::magnitudeToLogMel (const float* magnitude, float* melOut) const
@@ -183,13 +177,20 @@ void SpectrogramProcessor::melToMagnitude (const float* melLog, float* magOut)
 
 void SpectrogramProcessor::magnitudeToFrame (const float* mag, const float* phase, float* outFrame)
 {
+    // Build the positive-frequency half, then mirror with Hermitian symmetry.
     for (int k = 0; k < numBins; ++k)
     {
-        ifftBuffer[(size_t) (2 * k)]     = mag[k] * std::cos (phase[k]);
-        ifftBuffer[(size_t) (2 * k + 1)] = mag[k] * std::sin (phase[k]);
+        reBuf[(size_t) k] = mag[k] * std::cos (phase[k]);
+        imBuf[(size_t) k] = mag[k] * std::sin (phase[k]);
     }
-    fft->performRealOnlyInverseTransform (ifftBuffer.data());
-    std::copy (ifftBuffer.begin(), ifftBuffer.begin() + fftSize, outFrame);
+    for (int k = 1; k < numBins - 1; ++k)   // conj-mirror bins 1..N/2-1
+    {
+        reBuf[(size_t) (fftSize - k)] =  reBuf[(size_t) k];
+        imBuf[(size_t) (fftSize - k)] = -imBuf[(size_t) k];
+    }
+    fft.transform (reBuf.data(), imBuf.data(), true);   // inverse
+    for (int i = 0; i < fftSize; ++i)
+        outFrame[i] = reBuf[(size_t) i];                // imaginary part ~0
 }
 
 void SpectrogramProcessor::melToFrame (const float* melLog, const float* phase, float* outFrame)

@@ -35,7 +35,8 @@ training:
 
 loss:
   recon_weight: 1.0
-  vocoder_weight: 1.0
+  vocoder_weight: 0.0    # plugin resynthesizes from mel (WaveRNN bypassed);
+                         # focus training on mel reconstruction quality
 
 data:
   features_train: ../data/datasets/preprocessed/train_features.h5
