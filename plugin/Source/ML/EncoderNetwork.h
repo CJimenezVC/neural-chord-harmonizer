@@ -1,34 +1,26 @@
 #pragma once
 
-#include <memory>
-#include <vector>
+#include "NNModel.h"
 
 namespace juce { class File; }
 
 /**
-    RTNeural wrapper for the encoder: mel-spectrogram window -> style vector.
-
-    The actual RTNeural model object is held behind a pimpl-style pointer so the
-    heavy RTNeural template instantiation stays in the .cpp.
+    Encoder wrapper: a mel-spectrogram frame -> style vector. Backed by the
+    self-contained NNModel engine that loads the exported .rtneural JSON.
 */
 class EncoderNetwork
 {
 public:
-    EncoderNetwork();
-    ~EncoderNetwork();
-
     bool loadModel (const juce::File& jsonFile);
-    bool isLoaded() const noexcept { return loaded; }
+    bool isLoaded() const noexcept { return model.isLoaded(); }
 
-    /** Encode @p numFrames mel frames (T x melBins) into @p styleOut (styleDim). */
+    /** Encode @p numFrames mel frames (only the first is used in streaming
+        mode) into @p styleOut (getStyleDim() values). */
     void encode (const float* mel, int numFrames, float* styleOut);
 
-    int getStyleDim() const noexcept { return styleDim; }
+    int getStyleDim() const noexcept { return model.outputSize(); }
+    int getMelBins()  const noexcept { return model.inputSize(); }
 
 private:
-    struct Impl;
-    std::unique_ptr<Impl> impl;
-    bool loaded = false;
-    int  styleDim = 64;
-    int  melBins = 128;
+    NNModel model;
 };

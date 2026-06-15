@@ -37,5 +37,12 @@ private:
     PresetManager   presetManager;
     SpectrumAnalyzer analyzerBefore, analyzerAfter;
 
+    juce::TextButton loadModelsButton { "Load Models…" };
+    juce::Label      modelStatusLabel;
+    std::unique_ptr<juce::FileChooser> chooser;
+
+    void chooseModelsFolder();
+    void refreshModelStatus();
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AdaptiveVoiceTransformEditor)
 };

@@ -92,9 +92,16 @@ See [`docs/TRAINING_GUIDE.md`](docs/TRAINING_GUIDE.md) for the full walkthrough.
 
 ## Status
 
-🚧 **Scaffolding stage.** The repository structure, interfaces, and documentation
-are in place. Implementations are marked with `TODO` and are being filled in.
-See individual module headers for the intended API.
+🚧 **Working pipeline, early model.**
+
+- ✅ DSP front end (STFT/mel/YIN/formants), streaming buffers, host↔24 kHz resampling
+- ✅ Python training pipeline; trains on Apple MPS (CPU fallback)
+- ✅ RTNeural export + self-contained C++ inference engine (`NNModel`), validated
+  against PyTorch to ~1e-8; load models via the editor's **Load Models…** button
+  or `$AVT_MODELS_DIR`
+- ⚠️ The WaveRNN head is **frame-rate categorical**, so it runs end-to-end but does
+  not yet synthesize speech-quality audio — a sample-rate vocoder (or mel
+  inversion) is the next step. See `docs/API_REFERENCE.md` (Vocoder caveat).
 
 ## References
 

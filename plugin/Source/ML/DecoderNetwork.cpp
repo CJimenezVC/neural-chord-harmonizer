@@ -1,37 +1,25 @@
 #include "DecoderNetwork.h"
 
 #include <algorithm>
+
 #include <juce_core/juce_core.h>
-
-struct DecoderNetwork::Impl
-{
-    // std::unique_ptr<RTNeural::Model<float>> model;
-    std::vector<float> input;   // mel ⊕ style scratch
-};
-
-DecoderNetwork::DecoderNetwork() : impl (std::make_unique<Impl>()) {}
-DecoderNetwork::~DecoderNetwork() = default;
 
 bool DecoderNetwork::loadModel (const juce::File& jsonFile)
 {
-    if (! jsonFile.existsAsFile())
-        return false;
-
-    // TODO: parse RTNeural JSON; read melBins/styleDim from spec.
-    loaded = true;
-    return loaded;
+    const bool ok = model.loadFromFile (jsonFile);
+    if (ok)
+        input.assign ((size_t) model.inputSize(), 0.0f);
+    return ok;
 }
 
 void DecoderNetwork::decode (const float* melFrame, const float* style, float* melOut)
 {
-    if (! loaded)
-    {
-        std::copy (melFrame, melFrame + melBins, melOut);   // pass-through
-        return;
-    }
+    const int melBins  = getMelBins();
+    const int styleDim = getStyleDim();
 
-    // Placeholder: identity + small style-conditioned bias. Replace with the
-    // RTNeural conv/dense forward pass over (mel ⊕ style).
-    for (int b = 0; b < melBins; ++b)
-        melOut[b] = melFrame[b] + 0.0f * style[b % styleDim];
+    // Build (mel ⊕ style) frame-wise, matching the training-time concatenation.
+    std::copy (melFrame, melFrame + melBins, input.begin());
+    std::copy (style, style + styleDim, input.begin() + melBins);
+
+    model.forward (input.data(), (int) input.size(), melOut);
 }

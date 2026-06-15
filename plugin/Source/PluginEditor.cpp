@@ -29,6 +29,12 @@ AdaptiveVoiceTransformEditor::AdaptiveVoiceTransformEditor (AdaptiveVoiceTransfo
     addAndMakeVisible (analyzerBefore);
     addAndMakeVisible (analyzerAfter);
 
+    addAndMakeVisible (loadModelsButton);
+    loadModelsButton.onClick = [this] { chooseModelsFolder(); };
+    addAndMakeVisible (modelStatusLabel);
+    modelStatusLabel.setJustificationType (juce::Justification::centredRight);
+    refreshModelStatus();
+
     auto& apvts = p.getValueTreeState();
     styleAttachment      = std::make_unique<SliderAttachment> (apvts, "styleShift",   styleKnob);
     brightnessAttachment = std::make_unique<SliderAttachment> (apvts, "brightness",   brightnessSlider);
@@ -55,7 +61,10 @@ void AdaptiveVoiceTransformEditor::paint (juce::Graphics& g)
 void AdaptiveVoiceTransformEditor::resized()
 {
     auto area = getLocalBounds().reduced (12);
-    area.removeFromTop (32);                              // title
+
+    auto titleRow = area.removeFromTop (32);              // title + model controls
+    loadModelsButton.setBounds (titleRow.removeFromRight (110).reduced (0, 4));
+    modelStatusLabel.setBounds (titleRow.removeFromRight (160));
 
     auto top = area.removeFromTop (200);
     analyzerBefore.setBounds (top.removeFromLeft (top.getWidth() / 2).reduced (4));
@@ -73,4 +82,32 @@ void AdaptiveVoiceTransformEditor::resized()
     brightnessLabel.setBounds (styleKnob.getRight(),          controls.getY(), w, 18);
 
     presetManager.setBounds (area.removeFromBottom (28));
+}
+
+void AdaptiveVoiceTransformEditor::chooseModelsFolder()
+{
+    chooser = std::make_unique<juce::FileChooser> (
+        "Select the models/pretrained folder", juce::File{}, juce::String{});
+
+    const auto flags = juce::FileBrowserComponent::openMode
+                     | juce::FileBrowserComponent::canSelectDirectories;
+
+    chooser->launchAsync (flags, [this] (const juce::FileChooser& fc)
+    {
+        const auto dir = fc.getResult();
+        if (dir.isDirectory())
+        {
+            processorRef.loadModels (dir);
+            refreshModelStatus();
+        }
+    });
+}
+
+void AdaptiveVoiceTransformEditor::refreshModelStatus()
+{
+    const bool loaded = processorRef.getModelManager().isLoaded();
+    modelStatusLabel.setText (loaded ? "Models: loaded" : "Models: none",
+                              juce::dontSendNotification);
+    modelStatusLabel.setColour (juce::Label::textColourId,
+                                loaded ? juce::Colours::lightgreen : juce::Colours::orange);
 }

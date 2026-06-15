@@ -13,6 +13,7 @@ each pipeline stage to the concrete C++ class that implements it.
 | Formant analysis   | `FormantAnalyzer`                  | `plugin/Source/DSP/`              |
 | STFT / spectra     | `SpectrogramProcessor`             | `plugin/Source/DSP/`              |
 | Streaming buffers  | `OverlapAddBuffer`, `CircularAudioBuffer` | `plugin/Source/DSP/`       |
+| Inference engine   | `NNModel` (+ `NNMath.h`)           | `plugin/Source/ML/`               |
 | Model loading      | `ModelManager`                     | `plugin/Source/ML/`               |
 | Encoder            | `EncoderNetwork`                   | `plugin/Source/ML/`               |
 | Decoder            | `DecoderNetwork`                   | `plugin/Source/ML/`               |

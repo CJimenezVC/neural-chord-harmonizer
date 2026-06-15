@@ -56,27 +56,40 @@ VocoderNetwork&  vocoder() noexcept;
 const ModelInfo& info() const noexcept;          // norm stats, dims
 ```
 
-### `EncoderNetwork`
+### `NNModel` (+ `NNMath.h`)
+Self-contained feed-forward engine that loads an exported `.rtneural` JSON file
+and runs a single-frame (streaming) forward pass. Supported layers: dense,
+conv1d (single-frame centre tap), global_mean_pool (identity for one frame),
+gru (state carried across calls). The math lives in the JUCE-free `NNMath.h`
+and is unit-tested (`Tests/test_nn.cpp`) and validated against PyTorch to ~1e-8
+(`training/verify_rtneural_export.py`).
 ```cpp
-void  loadModel(const nlohmann::json& weights);
-// mel (T x 128) -> style vector (styleDim)
-void  encode(const float* mel, int numFrames, float* styleOut);
+bool  loadFromFile(const juce::File& jsonFile);
+void  forward(const float* input, int inputLen, float* out);  // carries GRU state
+void  reset();
+int   inputSize() const noexcept;   int outputSize() const noexcept;
 ```
 
-### `DecoderNetwork`
+> A single-frame conv1d with `padding=1, kernel=3` reduces exactly to the centre
+> kernel tap — which is why the streaming path is correct without buffering past
+> frames (the ±1 temporal taps are unused in this mode).
+
+### `EncoderNetwork` / `DecoderNetwork` / `VocoderNetwork`
+Thin wrappers over `NNModel`:
 ```cpp
-void  loadModel(const nlohmann::json& weights);
-// (mel frame ⊕ style) -> transformed mel frame
-void  decode(const float* melFrame, const float* style, float* melOut);
+bool  loadModel(const juce::File& jsonFile);     // all three
+void  EncoderNetwork::encode(const float* mel, int numFrames, float* styleOut);
+void  DecoderNetwork::decode(const float* melFrame, const float* style, float* melOut);
+int   VocoderNetwork::synthesize(const float* melFrame, float* audioOut, int maxSamples);
+void  VocoderNetwork::reset();   // clear recurrent state
 ```
 
-### `VocoderNetwork`
-```cpp
-void  loadModel(const nlohmann::json& weights);
-// mel frame -> waveform samples; carries GRU state across calls
-int   synthesize(const float* melFrame, float* audioOut, int maxSamples);
-void  reset();   // clear recurrent state
-```
+> **Vocoder caveat:** the trained WaveRNN head emits one 256-way mu-law
+> categorical value *per mel frame* (frame-rate), not one sample per step. The
+> wrapper decodes the argmax to an amplitude and fills the hop with a click-free
+> ramp — so it runs the model end-to-end, but output is a frame-rate envelope,
+> not speech-quality audio. A sample-rate vocoder (or mel inversion) is the next
+> step for real audio.
 
 ### `NeuralAudioProcessor`
 ```cpp

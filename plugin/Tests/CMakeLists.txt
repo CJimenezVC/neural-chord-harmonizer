@@ -3,7 +3,8 @@
 
 add_executable(avt_tests
     test_main.cpp
-    test_dsp.cpp)
+    test_dsp.cpp
+    test_nn.cpp)
 
 target_include_directories(avt_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../Source)
 

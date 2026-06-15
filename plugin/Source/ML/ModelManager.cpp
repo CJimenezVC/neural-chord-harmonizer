@@ -18,6 +18,9 @@ bool ModelManager::loadFromDirectory (const juce::File& dir)
                  && dec.loadModel (decFile)
                  && voc.loadModel (vocFile);
 
+    if (ok)
+        voc.setSamplesPerFrame (modelInfo.hopLength);   // hop samples per frame
+
     loaded.store (ok);
     return ok;
 }

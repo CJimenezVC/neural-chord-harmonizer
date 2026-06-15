@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 #include "PluginEditor.h"
 
@@ -19,6 +20,14 @@ AdaptiveVoiceTransformProcessor::AdaptiveVoiceTransformProcessor()
           .withOutput ("Output", juce::AudioChannelSet::mono(), true)),
       apvts (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
+    // Dev convenience: auto-load models from $AVT_MODELS_DIR if set, e.g.
+    //   export AVT_MODELS_DIR=/path/to/adaptive-voice-transform/models/pretrained
+    if (const char* dir = std::getenv ("AVT_MODELS_DIR"))
+    {
+        juce::File d (juce::String::fromUTF8 (dir));
+        if (d.isDirectory())
+            loadModels (d);
+    }
 }
 
 AdaptiveVoiceTransformProcessor::~AdaptiveVoiceTransformProcessor() = default;
@@ -177,10 +186,11 @@ void AdaptiveVoiceTransformProcessor::processBlock (juce::AudioBuffer<float>& bu
         const auto features = featureExtractor.process (scratchFrame.data(), frameSize);
         const int produced  = neuralProcessor.processFrame (features, scratchAudio.data(),
                                                             (int) scratchAudio.size());
-        outputBuffer.add (scratchAudio.data(), produced);
-
-        const int ready = outputBuffer.read (olaScratch.data(), hopSize);
-        modelOutFifo.push (olaScratch.data(), ready);
+        // The vocoder emits exactly one hop of samples per frame (frame-rate
+        // synthesis), so the chunks tile contiguously — no overlap-add
+        // windowing. (OverlapAddBuffer is retained for a future frame-length
+        // synthesis vocoder.)
+        modelOutFifo.push (scratchAudio.data(), produced);
     }
 
     // 3) Upsample 24 kHz output back to the host rate, filling the block exactly.

@@ -36,6 +36,9 @@ endif()
 # ---------------------------------------------------------------------------
 juce_add_plugin(AdaptiveVoiceTransform
     COMPANY_NAME              "Cristobal Jimenez"
+    # Explicit reverse-DNS bundle id (no spaces — JUCE warns if derived from a
+    # company name containing spaces).
+    BUNDLE_ID                 com.cristobaljimenez.adaptivevoicetransform
     PLUGIN_MANUFACTURER_CODE  Cjim
     PLUGIN_CODE               Avtf
     FORMATS                   VST3 AU Standalone
@@ -56,6 +59,7 @@ target_sources(AdaptiveVoiceTransform PRIVATE
     Source/DSP/SpectrogramProcessor.cpp
     Source/DSP/OverlapAddBuffer.cpp
 
+    Source/ML/NNModel.cpp
     Source/ML/ModelManager.cpp
     Source/ML/EncoderNetwork.cpp
     Source/ML/DecoderNetwork.cpp
