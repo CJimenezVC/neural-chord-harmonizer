@@ -7,10 +7,21 @@ and evaluated on **CMU Arctic** (high-quality reference speakers).
 
 ### VCC2020 — Voice Conversion Challenge 2020 (training)
 
-- Parallel pairs: `P225↔P226`, `P227↔P228`, `P229↔P230`, `P231↔P232`
-- ~10 hours per speaker pair
-- 16 kHz, mono, already time-aligned
-- Source: https://www.voiceconversionchallenge.org/
+- **4 source speakers** (English): `SEF1`, `SEF2`, `SEM1`, `SEM2`
+- **10 target speakers**: `TEF1`, `TEF2`, `TEM1`, `TEM2` (English, Task 1) and
+  `TFF1`, `TFM1`, `TGF1`, `TGM1`, `TMF1`, `TMM1` (Finnish/German/Mandarin, Task 2)
+- Speaker code: `S`/`T` = source/target, 2nd letter = language
+  (`E`/`F`/`G`/`M` = English/Finnish/German/Mandarin), 3rd = `M`/`F` (male/female)
+- 70 sentences per speaker; 24 kHz, 16-bit mono WAV
+- **Parallel pairs share a filename** (e.g. `SEF1/E10051.wav` ≡ `TEF1/E10051.wav`);
+  IDs 20001–20050 are nonparallel
+- **Task 1** (intra-lingual, 16 source→target pairs) is the parallel-data task
+  used here; Task 2 is cross-lingual
+- Openly licensed (ODbL with DbCL 1.0 — commercial use permitted; no registration)
+- Source: https://github.com/nii-yamagishilab/VCC2020-database
+
+> Our pipeline resamples the 24 kHz source audio to 48 kHz during preprocessing
+> (`audio.sample_rate` in `config.yaml`).
 
 ### CMU Arctic (evaluation / generalization)
 
@@ -34,12 +45,11 @@ Split manifests live in `data/splits/{train,val,test}.txt`.
 ```
 data/
 ├── datasets/
-│   ├── vcc2020/
-│   │   ├── train/
-│   │   │   ├── speaker1_source/
-│   │   │   ├── speaker1_target/
-│   │   │   └── ...
-│   │   └── eval/
+│   ├── vcc2020/                  # extracted from the database ZIPs
+│   │   ├── vcc2020_training/      # SEF1/ SEF2/ SEM1/ SEM2/ TEF1/ ... per-speaker WAVs
+│   │   ├── vcc2020_evaluation/    # source-speaker eval recordings
+│   │   ├── vcc2020_groundtruth/   # target-speaker English references
+│   │   └── prompts/               # transcriptions
 │   ├── cmu_arctic/
 │   │   ├── bdl/  clb/  jmk/  awb/
 │   └── preprocessed/

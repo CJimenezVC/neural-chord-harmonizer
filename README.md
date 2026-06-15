@@ -97,7 +97,7 @@ See individual module headers for the intended API.
 - WaveRNN vocoder — Kalchbrenner et al. (2018)
 - [RTNeural](https://github.com/jatinchowdhury18/RTNeural)
 - [JUCE](https://juce.com/)
-- [Voice Conversion Challenge 2020](https://www.voiceconversionchallenge.org/)
+- [Voice Conversion Challenge 2020 database](https://github.com/nii-yamagishilab/VCC2020-database)
 
 ## License
 

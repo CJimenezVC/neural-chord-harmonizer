@@ -52,7 +52,8 @@ def preprocess(cfg: dict) -> None:
 
     datasets_root = Path("../data/datasets")
     targets = {
-        "train": (datasets_root / "vcc2020" / "train", cfg["data"]["features_train"]),
+        # VCC2020 ZIPs extract to vcc2020/vcc2020_training/<SPEAKER>/*.wav
+        "train": (datasets_root / "vcc2020" / "vcc2020_training", cfg["data"]["features_train"]),
         "eval": (datasets_root / "cmu_arctic", cfg["data"]["features_eval"]),
     }
 

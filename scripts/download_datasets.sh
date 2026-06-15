@@ -19,9 +19,25 @@ for spk in cmu_us_bdl_arctic cmu_us_clb_arctic cmu_us_jmk_arctic cmu_us_awb_arct
     [[ -f "$out" ]] && tar -xjf "$out" -C "$DATA/cmu_arctic" || true
 done
 
-echo "==> VCC2020"
-echo "  VCC2020 requires registration. Download from:"
-echo "    https://github.com/nii-yamagishilab/VCC2020-database"
-echo "  and extract parallel pairs into: $DATA/vcc2020/train/"
+echo "==> VCC2020 (openly downloadable, ODbL/DbCL-1.0 — no registration)"
+# Hosted as ZIP assets in the nii-yamagishilab/VCC2020-database repo (master).
+VCC_BASE="https://raw.githubusercontent.com/nii-yamagishilab/VCC2020-database/master"
+VCC_ZIPS=(
+    vcc2020_database_training_source.zip
+    vcc2020_database_training_target_task1.zip
+    vcc2020_database_training_target_task2.zip
+    vcc2020_database_evaluation.zip
+    vcc2020_database_groundtruth.zip
+    vcc2020_database_transcriptions.zip
+)
+for zip in "${VCC_ZIPS[@]}"; do
+    out="$DATA/vcc2020/$zip"
+    if [[ ! -f "$out" ]]; then
+        echo "  downloading $zip"
+        curl -fL --retry 3 -o "$out" "$VCC_BASE/$zip" || \
+            { echo "  [warn] failed: $zip (check network)"; continue; }
+    fi
+    unzip -oq "$out" -d "$DATA/vcc2020" && echo "  extracted $zip"
+done
 
 echo "==> Done. Next: scripts/preprocess_data.sh"
