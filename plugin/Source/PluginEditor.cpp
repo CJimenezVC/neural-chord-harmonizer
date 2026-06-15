@@ -20,14 +20,29 @@ AdaptiveVoiceTransformEditor::AdaptiveVoiceTransformEditor (AdaptiveVoiceTransfo
 {
     setLookAndFeel (&lookAndFeel);
 
+    auto initLabel = [this] (juce::Label& l, const juce::String& text, float fontHeight)
+    {
+        l.setText (text, juce::dontSendNotification);
+        l.setJustificationType (juce::Justification::centred);
+        l.setFont (juce::Font (fontHeight));
+        addAndMakeVisible (l);
+    };
+
     addAndMakeVisible (styleKnob);
+    styleKnob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    initLabel (styleLabel, "Style Shift", 15.0f);
+
     configureSlider (brightnessSlider, brightnessLabel, "Brightness", *this);
     configureSlider (formantSlider,    formantLabel,    "Formant",    *this);
     configureSlider (pitchSlider,      pitchLabel,      "Pitch",      *this);
+    formantSlider.setTextValueSuffix (" st");
+    pitchSlider.setTextValueSuffix (" st");
 
     addAndMakeVisible (presetManager);
     addAndMakeVisible (analyzerBefore);
     addAndMakeVisible (analyzerAfter);
+    initLabel (beforeLabel, "Input",  13.0f);
+    initLabel (afterLabel,  "Output", 13.0f);
 
     addAndMakeVisible (loadModelsButton);
     loadModelsButton.onClick = [this] { chooseModelsFolder(); };
@@ -72,9 +87,10 @@ void AdaptiveVoiceTransformEditor::paint (juce::Graphics& g)
 {
     g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
     g.setColour (juce::Colours::white);
-    g.setFont (20.0f);
-    g.drawText ("Adaptive Voice Transform", getLocalBounds().removeFromTop (32),
-                juce::Justification::centred);
+    g.setFont (juce::Font (18.0f, juce::Font::bold));
+    g.drawText ("Adaptive Voice Transform",
+                getLocalBounds().removeFromTop (44).reduced (14, 0),
+                juce::Justification::centredLeft);
 }
 
 void AdaptiveVoiceTransformEditor::resized()
@@ -85,22 +101,30 @@ void AdaptiveVoiceTransformEditor::resized()
     loadModelsButton.setBounds (titleRow.removeFromRight (110).reduced (0, 4));
     modelStatusLabel.setBounds (titleRow.removeFromRight (160));
 
-    auto top = area.removeFromTop (200);
-    analyzerBefore.setBounds (top.removeFromLeft (top.getWidth() / 2).reduced (4));
-    analyzerAfter.setBounds  (top.reduced (4));
+    // Analyzers, each with a caption above.
+    auto top = area.removeFromTop (190);
+    auto beforeArea = top.removeFromLeft (top.getWidth() / 2).reduced (4);
+    auto afterArea  = top.reduced (4);
+    beforeLabel.setBounds (beforeArea.removeFromTop (16));
+    afterLabel.setBounds  (afterArea.removeFromTop (16));
+    analyzerBefore.setBounds (beforeArea);
+    analyzerAfter.setBounds  (afterArea);
 
-    auto controls = area.removeFromTop (150);
-    styleKnob.setBounds (controls.removeFromLeft (180).reduced (8));
-
-    const int w = controls.getWidth() / 3;
-    for (auto* pair : { &brightnessSlider, &formantSlider, &pitchSlider })
-    {
-        auto col = controls.removeFromLeft (w);
-        pair->setBounds (col.reduced (8).withTrimmedBottom (18));
-    }
-    brightnessLabel.setBounds (styleKnob.getRight(),          controls.getY(), w, 18);
-
+    area.removeFromTop (6);
     presetManager.setBounds (area.removeFromBottom (28));
+    area.removeFromBottom (6);
+
+    // Control grid: 4 equal columns, each = name label (top) + knob (below).
+    auto controls = area;
+    juce::Component* knobs[]  = { &styleKnob, &brightnessSlider, &formantSlider, &pitchSlider };
+    juce::Label*     labels[] = { &styleLabel, &brightnessLabel, &formantLabel, &pitchLabel };
+    const int colW = controls.getWidth() / 4;
+    for (int i = 0; i < 4; ++i)
+    {
+        auto col = (i == 3) ? controls : controls.removeFromLeft (colW);
+        labels[i]->setBounds (col.removeFromTop (18));
+        knobs[i]->setBounds (col.reduced (6, 2));
+    }
 }
 
 void AdaptiveVoiceTransformEditor::chooseModelsFolder()

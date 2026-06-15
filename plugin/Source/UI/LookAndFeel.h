@@ -9,6 +9,10 @@ public:
     AvtLookAndFeel();
     ~AvtLookAndFeel() override = default;
 
+    void drawRotarySlider (juce::Graphics&, int x, int y, int width, int height,
+                           float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
+                           juce::Slider&) override;
+
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AvtLookAndFeel)
 };

@@ -32,7 +32,8 @@ private:
 
     StyleKnob       styleKnob;
     juce::Slider    brightnessSlider, formantSlider, pitchSlider;
-    juce::Label     brightnessLabel, formantLabel, pitchLabel;
+    juce::Label     styleLabel, brightnessLabel, formantLabel, pitchLabel;
+    juce::Label     beforeLabel, afterLabel;
 
     std::unique_ptr<SliderAttachment> styleAttachment, brightnessAttachment,
                                       formantAttachment, pitchAttachment;
