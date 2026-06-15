@@ -75,23 +75,28 @@ def main() -> None:
             if enc is not None:
                 mn = ((mel - mean) / (std + 1e-8)).astype(np.float32)
                 t = torch.from_numpy(mn).view(1, 1, -1)
-                style = enc(t)
-                mel_hat = dec(t, style).numpy().ravel()
-                mel = mel_hat * (std + 1e-8) + mean        # denormalize
-
-            mel_lin = np.exp(mel)                          # power mel energies
-            power = np.maximum(0.0, inv @ mel_lin)         # pseudo-inverse mel
-            mag2 = np.sqrt(power)                           # power -> magnitude
+                dmel = dec(t, enc(t)).numpy().ravel() * (std + 1e-8) + mean
+                # Envelope-ratio filter: keep input mag+phase (coherent), apply
+                # only the decoder/input spectral-envelope ratio as a gain.
+                in_env = np.sqrt(np.maximum(0.0, inv @ np.exp(mel)))
+                dec_env = np.sqrt(np.maximum(0.0, inv @ np.exp(dmel)))
+                gain = np.minimum((dec_env + 1e-6) / (in_env + 1e-6), 4.0)
+                mag2 = mag * gain
+            else:
+                mag2 = mag                                 # identity passthrough
             spec2 = mag2 * np.exp(1j * phase)
             rec = np.fft.irfft(spec2, n=n_fft).astype(np.float32)
             out[s:s + n_fft] += rec * win                  # synthesis window + OLA
 
     out *= 1.0 / 1.5  # COLA only; retrained model reconstructs at full energy
     sf.write(args.out, out[:len(y)], sr)
-    rms_in, rms_out = np.sqrt((y ** 2).mean()), np.sqrt((out[:len(y)] ** 2).mean())
+    o = out[:len(y)]
+    rms_in, rms_out = np.sqrt((y ** 2).mean()), np.sqrt((o ** 2).mean())
+    corr = float(np.corrcoef(y, o)[0, 1])   # coherent filter stays correlated; static -> ~0
     print(f"identity={args.identity}")
     print(f"  RMS  in={rms_in:.4f}  out={rms_out:.4f}  ratio={rms_out/ (rms_in+1e-9):.3f}")
-    print(f"  peak in={np.abs(y).max():.4f}  out={np.abs(out).max():.4f}")
+    print(f"  peak in={np.abs(y).max():.4f}  out={np.abs(o).max():.4f}")
+    print(f"  corr(in,out) = {corr:.3f}")
     print(f"  wrote {args.out}")
 
 

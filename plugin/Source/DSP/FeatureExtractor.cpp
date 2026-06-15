@@ -1,5 +1,7 @@
 #include "FeatureExtractor.h"
 
+#include <cmath>
+
 void FeatureExtractor::prepare (double sampleRate, int frame, int hop, int nMels)
 {
     sr = sampleRate;
@@ -11,9 +13,11 @@ void FeatureExtractor::prepare (double sampleRate, int frame, int hop, int nMels
     pitch.prepare (sampleRate, frameSize);
     formants.prepare (sampleRate, /*lpcOrder*/ 12);
 
+    const size_t nBins = (size_t) (frameSize / 2 + 1);
     scratch.mel.assign ((size_t) nMels, 0.0f);
-    scratch.phase.assign ((size_t) (frameSize / 2 + 1), 0.0f);
-    magnitude.assign ((size_t) (frameSize / 2 + 1), 0.0f);
+    scratch.mag.assign (nBins, 0.0f);
+    scratch.phase.assign (nBins, 0.0f);
+    magnitude.assign (nBins, 0.0f);
 }
 
 void FeatureExtractor::reset()
@@ -29,6 +33,11 @@ Features FeatureExtractor::process (const float* frame, int numSamples)
     spectrogram.computeMagnitudeAndPhase (frame, numSamples, magnitude.data(),
                                           scratch.phase.data());
     spectrogram.magnitudeToLogMel (magnitude.data(), scratch.mel.data());
+
+    // Keep the input's linear magnitude (sqrt of power) so resynthesis can
+    // filter the real input spectrum rather than rebuild it (avoids phase noise).
+    for (size_t k = 0; k < scratch.mag.size(); ++k)
+        scratch.mag[k] = std::sqrt (magnitude[k]);
 
     // 2) Pitch (YIN) with confidence.
     const auto [f0, conf] = pitch.detect (frame, numSamples);

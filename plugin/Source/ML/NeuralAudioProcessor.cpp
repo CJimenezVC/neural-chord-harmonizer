@@ -17,6 +17,8 @@ void NeuralAudioProcessor::prepare (double sampleRate, int frame)
     styleInit = false;
     melOut.assign    ((size_t) melBins, 0.0f);
     melDenorm.assign ((size_t) melBins, 0.0f);
+    inEnv.assign     ((size_t) numBins, 0.0f);
+    decEnv.assign    ((size_t) numBins, 0.0f);
     magBuf.assign    ((size_t) numBins, 0.0f);
     magWarp.assign   ((size_t) numBins, 0.0f);
 }
@@ -116,13 +118,25 @@ int NeuralAudioProcessor::processFrame (const Features& feats, float* audioOut, 
                                            + info.melMean[(size_t) i]
                                      : melOut[(size_t) i];
 
-    // 4) log-mel -> linear magnitude, then apply the spectral controls.
-    synth.melToMagnitude (melDenorm.data(), magBuf.data());
+    // 4) Envelope-ratio filter. Rather than rebuild the spectrum from the
+    //    decoder mel (decoder-magnitude + input-phase is incoherent -> static),
+    //    keep the input's real magnitude AND phase and apply only the smooth
+    //    decoder/input spectral-envelope ratio as a gain. This is phase-coherent
+    //    (a time-varying filter on the voice), so it reshapes timbre/formants
+    //    without the noise, and preserves input content outside the mel band.
+    synth.melToMagnitude (feats.mel.data(), inEnv.data());     // input envelope
+    synth.melToMagnitude (melDenorm.data(), decEnv.data());    // transformed envelope
+    for (int k = 0; k < numBins; ++k)
+    {
+        float gain = (decEnv[(size_t) k] + 1.0e-6f) / (inEnv[(size_t) k] + 1.0e-6f);
+        gain = std::min (gain, 4.0f);                          // cap at +12 dB
+        magBuf[(size_t) k] = feats.mag[(size_t) k] * gain;
+    }
     applyFormantShift (magBuf.data(), p.formantShift, magWarp.data());
     applyBrightness (magWarp.data(), p.brightness);
 
-    // 5) Resynthesize a waveform frame using the input frame's phase. Apply the
-    //    makeup gain with a tanh soft-limiter so hot input can't clip harshly.
+    // 5) Resynthesize using the input frame's phase (coherent), with the COLA
+    //    gain and a tanh soft-limiter so hot input can't clip.
     synth.magnitudeToFrame (magWarp.data(), feats.phase.data(), audioOut);
     for (int n = 0; n < frameSize; ++n)
         audioOut[n] = std::tanh (audioOut[n] * outputGain);

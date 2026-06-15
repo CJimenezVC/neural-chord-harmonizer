@@ -11,6 +11,7 @@
 struct Features
 {
     std::vector<float> mel;            // log-mel, n_mels bins
+    std::vector<float> mag;            // linear magnitude, fftSize/2 + 1 bins
     std::vector<float> phase;          // STFT phase, fftSize/2 + 1 bins (radians)
     float f0 = 0.0f;                   // Hz
     std::array<float, 4> formants{};   // F1..F4 (Hz)

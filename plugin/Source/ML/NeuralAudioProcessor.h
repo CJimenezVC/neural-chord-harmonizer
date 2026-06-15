@@ -70,6 +70,8 @@ private:
     std::vector<float> styleMod;     // after interpolation
     std::vector<float> melOut;       // decoder output (normalized)
     std::vector<float> melDenorm;    // denormalized log-mel for resynthesis
-    std::vector<float> magBuf;       // linear magnitude spectrum (numBins)
+    std::vector<float> inEnv;        // input spectral envelope (numBins)
+    std::vector<float> decEnv;       // transformed spectral envelope (numBins)
+    std::vector<float> magBuf;       // filtered magnitude spectrum (numBins)
     std::vector<float> magWarp;      // formant-warped magnitude (numBins)
 };
