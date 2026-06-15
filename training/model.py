@@ -109,6 +109,27 @@ class VoiceTransformModel(nn.Module):
         return {"style": style, "mel_hat": mel_hat, "audio_logits": logits}
 
 
+class VoiceConversionModel(nn.Module):
+    """Target-speaker voice conversion: (source mel, target id) -> target mel.
+
+    A learned embedding per target speaker replaces the autoencoder's style
+    vector, so the decoder learns a non-uniform, target-specific source->target
+    spectral mapping (this is what distinguishes it from a fixed formant warp).
+    The decoder is the same kernel=1 ConvDecoder used elsewhere, so the plugin's
+    inference path is unchanged apart from where the style vector comes from.
+    """
+
+    def __init__(self, cfg: dict, n_targets: int):
+        super().__init__()
+        m = cfg["model"]
+        self.spk_emb = nn.Embedding(n_targets, m["style_dim"])
+        self.decoder = ConvDecoder(m["mel_bins"], m["style_dim"], m["decoder_channels"])
+
+    def forward(self, source_mel: torch.Tensor, target_id: torch.Tensor) -> torch.Tensor:
+        emb = self.spk_emb(target_id)              # (B, style_dim)
+        return self.decoder(source_mel, emb)       # (B, T, mel_bins)
+
+
 def count_parameters(model: nn.Module) -> int:
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 

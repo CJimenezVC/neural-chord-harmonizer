@@ -30,7 +30,21 @@ AdaptiveVoiceTransformEditor::AdaptiveVoiceTransformEditor (AdaptiveVoiceTransfo
 
     addAndMakeVisible (styleKnob);
     styleKnob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
-    initLabel (styleLabel, "Style Shift", 15.0f);
+    initLabel (styleLabel, "Amount", 15.0f);
+
+    addAndMakeVisible (targetBox);
+    initLabel (targetLabel, "Target", 13.0f);
+    targetBox.onChange = [this]
+    {
+        const int idx = targetBox.getSelectedId() - 1;
+        if (idx < 0) return;
+        if (auto* prm = processorRef.getValueTreeState().getParameter ("target"))
+        {
+            prm->beginChangeGesture();
+            prm->setValueNotifyingHost (prm->convertTo0to1 ((float) idx));
+            prm->endChangeGesture();
+        }
+    };
 
     configureSlider (brightnessSlider, brightnessLabel, "Brightness", *this);
     configureSlider (formantSlider,    formantLabel,    "Formant",    *this);
@@ -96,7 +110,9 @@ void AdaptiveVoiceTransformEditor::resized()
 
     auto titleRow = area.removeFromTop (32);              // title + model controls
     loadModelsButton.setBounds (titleRow.removeFromRight (110).reduced (0, 4));
-    modelStatusLabel.setBounds (titleRow.removeFromRight (160));
+    modelStatusLabel.setBounds (titleRow.removeFromRight (130));
+    targetBox.setBounds (titleRow.removeFromRight (120).reduced (0, 4));
+    targetLabel.setBounds (titleRow.removeFromRight (50));
 
     // Analyzers, each with a caption above.
     auto top = area.removeFromTop (190);
@@ -145,9 +161,26 @@ void AdaptiveVoiceTransformEditor::chooseModelsFolder()
 
 void AdaptiveVoiceTransformEditor::refreshModelStatus()
 {
+    const auto& info = processorRef.getModelManager().info();
     const bool loaded = processorRef.getModelManager().isLoaded();
     modelStatusLabel.setText (loaded ? "Models: loaded" : "Models: none",
                               juce::dontSendNotification);
     modelStatusLabel.setColour (juce::Label::textColourId,
                                 loaded ? juce::Colours::lightgreen : juce::Colours::orange);
+
+    // Populate the target selector from the loaded conversion model.
+    const bool conv = loaded && info.conversion && info.targetNames.size() > 0;
+    if (conv && targetBox.getNumItems() != info.targetNames.size())
+    {
+        targetBox.clear (juce::dontSendNotification);
+        for (int i = 0; i < info.targetNames.size(); ++i)
+            targetBox.addItem (info.targetNames[i], i + 1);
+        const int cur = (int) processorRef.getValueTreeState()
+                                .getRawParameterValue ("target")->load();
+        targetBox.setSelectedId (juce::jlimit (0, info.targetNames.size() - 1, cur) + 1,
+                                 juce::dontSendNotification);
+    }
+    targetBox.setVisible (conv);
+    targetLabel.setVisible (conv);
+    styleLabel.setText (conv ? "Amount" : "Style", juce::dontSendNotification);
 }

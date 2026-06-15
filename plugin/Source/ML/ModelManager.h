@@ -19,6 +19,12 @@ struct ModelInfo
     std::vector<float> melFb;     // [melBins * melFbBins] row-major (Slaney filterbank)
     int melFbBins = 0;            // = n_fft/2 + 1
     std::vector<float> invMelFb;  // [melFbBins * melBins] row-major (pinv of melFb)
+
+    // Voice-conversion mode: learned target-speaker embeddings + names.
+    bool conversion = false;
+    int  numTargets = 0;
+    std::vector<float>      speakerEmb;     // [numTargets * styleDim] row-major
+    std::vector<juce::String> targetNames;
 };
 
 /**

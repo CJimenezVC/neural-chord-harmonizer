@@ -9,17 +9,21 @@ bool ModelManager::loadFromDirectory (const juce::File& dir)
     const auto vocFile  = dir.getChildFile ("vocoder.rtneural");
     const auto infoFile = dir.getChildFile ("model_info.json");
 
-    if (! (encFile.existsAsFile() && decFile.existsAsFile() && vocFile.existsAsFile()))
+    parseInfo (infoFile);   // sets modelInfo.conversion
+
+    // Conversion mode needs only the decoder + embeddings (info). The
+    // autoencoder mode needs encoder/decoder/vocoder.
+    if (! decFile.existsAsFile())
         return false;
 
-    parseInfo (infoFile);
-
-    const bool ok = enc.loadModel (encFile)
-                 && dec.loadModel (decFile)
-                 && voc.loadModel (vocFile);
-
-    if (ok)
-        voc.setSamplesPerFrame (modelInfo.hopLength);   // hop samples per frame
+    bool ok = dec.loadModel (decFile);
+    if (ok && ! modelInfo.conversion)
+    {
+        ok = encFile.existsAsFile() && vocFile.existsAsFile()
+          && enc.loadModel (encFile) && voc.loadModel (vocFile);
+        if (ok)
+            voc.setSamplesPerFrame (modelInfo.hopLength);
+    }
 
     loaded.store (ok);
     return ok;
@@ -67,5 +71,14 @@ bool ModelManager::parseInfo (const juce::File& infoFile)
     };
     modelInfo.melFbBins = loadMatrix (json["mel_fb"], modelInfo.melFb);     // [melBins][nBins]
     loadMatrix (json["inv_mel_fb"], modelInfo.invMelFb);                    // [nBins][melBins]
+
+    // Voice-conversion: learned target embeddings + names.
+    modelInfo.conversion = json.getProperty ("mode", juce::var()).toString() == "conversion";
+    loadMatrix (json["speaker_embeddings"], modelInfo.speakerEmb);          // [nTargets][styleDim]
+    modelInfo.targetNames.clear();
+    if (auto* t = json["targets"].getArray())
+        for (auto& name : *t)
+            modelInfo.targetNames.add (name.toString());
+    modelInfo.numTargets = modelInfo.targetNames.size();
     return true;
 }

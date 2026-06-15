@@ -7,9 +7,10 @@
 */
 struct StyleParams
 {
-    float styleShift   = 0.0f;   // [0,1]   source <-> target blend
+    float styleShift   = 0.0f;   // [0,1]   conversion amount (source -> target)
     float brightness   = 0.0f;   // [-1,1]  spectral tilt
     float formantShift = 0.0f;   // semitones [-12,12] spectral-envelope warp
+    int   targetId     = 0;      // selected target speaker (conversion mode)
     // (No pitch control: the resynthesis reuses the input's phase, so true pitch
     //  shifting would need a phase vocoder — a separate resynthesis path.)
 };

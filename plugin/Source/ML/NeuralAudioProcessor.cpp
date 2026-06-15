@@ -95,22 +95,37 @@ int NeuralAudioProcessor::processFrame (const Features& feats, float* audioOut, 
                                          / (info.melStd[(size_t) i] + 1e-8f)
                                    : feats.mel[(size_t) i];
 
-    // 2) Encode -> EMA-smooth the style (approximates training's window pooling)
-    //    -> style modulation -> decode (all in normalized mel space).
-    models->encoder().encode (melNorm.data(), 1, styleVec.data());
-    if (! styleInit)
+    // 2) Produce the transformed mel (normalized).
+    if (info.conversion && (int) info.speakerEmb.size() >= info.numTargets * styleDim
+        && info.numTargets > 0)
     {
-        std::copy (styleVec.begin(), styleVec.end(), styleAvg.begin());
-        styleInit = true;
+        // Conversion: condition the decoder on the selected target embedding,
+        // then blend source<->target by the amount control.
+        const int tid = std::clamp (p.targetId, 0, info.numTargets - 1);
+        const float* emb = &info.speakerEmb[(size_t) (tid * styleDim)];
+        models->decoder().decode (melNorm.data(), emb, melOut.data());
+        const float amt = std::clamp (p.styleShift, 0.0f, 1.0f);
+        for (int i = 0; i < melBins; ++i)
+            melOut[(size_t) i] = (1.0f - amt) * melNorm[(size_t) i] + amt * melOut[(size_t) i];
     }
     else
     {
-        for (int i = 0; i < styleDim; ++i)
-            styleAvg[(size_t) i] = styleAlpha * styleAvg[(size_t) i]
-                                 + (1.0f - styleAlpha) * styleVec[(size_t) i];
+        // Autoencoder fallback: encode -> EMA-smooth style -> modulate -> decode.
+        models->encoder().encode (melNorm.data(), 1, styleVec.data());
+        if (! styleInit)
+        {
+            std::copy (styleVec.begin(), styleVec.end(), styleAvg.begin());
+            styleInit = true;
+        }
+        else
+        {
+            for (int i = 0; i < styleDim; ++i)
+                styleAvg[(size_t) i] = styleAlpha * styleAvg[(size_t) i]
+                                     + (1.0f - styleAlpha) * styleVec[(size_t) i];
+        }
+        styleInterp.apply (styleAvg.data(), p, styleMod.data());
+        models->decoder().decode (melNorm.data(), styleMod.data(), melOut.data());
     }
-    styleInterp.apply (styleAvg.data(), p, styleMod.data());
-    models->decoder().decode (melNorm.data(), styleMod.data(), melOut.data());
 
     // 3) Denormalize the transformed mel back to log-mel.
     for (int i = 0; i < melBins; ++i)

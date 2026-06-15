@@ -43,6 +43,8 @@ private:
 
     juce::TextButton loadModelsButton { "Load Models..." };
     juce::Label      modelStatusLabel;
+    juce::ComboBox   targetBox;          // target speaker (conversion mode)
+    juce::Label      targetLabel;
     std::unique_ptr<juce::FileChooser> chooser;
     std::vector<float> scopeScratch;   // drains the processor's scope FIFOs
 
