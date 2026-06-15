@@ -55,9 +55,9 @@ private:
     int styleDim = 64;
     int melBins = 128;
     float fMin = 20.0f, fMax = 8000.0f;
-    // Output gain = (1/1.5 Hann-OLA COLA) × (~4.5 makeup for the small model's
-    // energy loss), so output ≈ input level. Model-specific; tune to taste.
-    float outputGain = 3.0f;
+    // Hann-OLA COLA normalization (75% overlap). The retrained model reconstructs
+    // at full energy, so no makeup gain is needed (output ≈ input level).
+    float outputGain = 1.0f / 1.5f;
 
     // The encoder pools features over a window in training; in single-frame
     // streaming we approximate that window-mean with an EMA of the style vector.

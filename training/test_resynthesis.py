@@ -86,7 +86,7 @@ def main() -> None:
             rec = np.fft.irfft(spec2, n=n_fft).astype(np.float32)
             out[s:s + n_fft] += rec * win                  # synthesis window + OLA
 
-    out *= 3.0  # 1/1.5 COLA x ~4.5 makeup (matches plugin)
+    out *= 1.0 / 1.5  # COLA only; retrained model reconstructs at full energy
     sf.write(args.out, out[:len(y)], sr)
     rms_in, rms_out = np.sqrt((y ** 2).mean()), np.sqrt((out[:len(y)] ** 2).mean())
     print(f"identity={args.identity}")
