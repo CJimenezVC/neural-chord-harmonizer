@@ -23,8 +23,8 @@ struct ModelInfo
     // Voice-conversion mode: learned target-speaker embeddings + names.
     bool conversion = false;
     int  numTargets = 0;
-    std::vector<float>      speakerEmb;     // [numTargets * styleDim] row-major
-    std::vector<juce::String> targetNames;
+    std::vector<float> speakerEmb;          // [numTargets * styleDim] row-major
+    juce::StringArray  targetNames;
 };
 
 /**
