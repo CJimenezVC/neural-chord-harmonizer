@@ -47,6 +47,7 @@ def main() -> None:
     melfb = librosa.filters.mel(sr=sr, n_fft=n_fft, n_mels=a["n_mels"],
                                 fmin=a["fmin"], fmax=a["fmax"])          # [n_mels, n_bins]
     colnorm = (melfb ** 2).sum(0) + 1e-8                                  # [n_bins]
+    inv = np.linalg.pinv(melfb)                                           # [n_bins, n_mels]
     win = np.hanning(n_fft).astype(np.float32)
     # librosa.feature.melspectrogram uses a POWER spectrum (|STFT|^2).
 
@@ -79,7 +80,7 @@ def main() -> None:
                 mel = mel_hat * (std + 1e-8) + mean        # denormalize
 
             mel_lin = np.exp(mel)                          # power mel energies
-            power = np.maximum(0.0, (melfb.T @ mel_lin) / colnorm)   # inverse-mel
+            power = np.maximum(0.0, inv @ mel_lin)         # pseudo-inverse mel
             mag2 = np.sqrt(power)                           # power -> magnitude
             spec2 = mag2 * np.exp(1j * phase)
             rec = np.fft.irfft(spec2, n=n_fft).astype(np.float32)

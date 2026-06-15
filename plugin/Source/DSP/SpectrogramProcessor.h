@@ -20,6 +20,17 @@ public:
         Slaney filterbank from model_info.json). @p fb is row-major [nMels][nBins]. */
     void setMelFilterbank (const float* fb, int nMels, int nBins);
 
+    /** Provide the pseudo-inverse filterbank for resynthesis (preferred over the
+        built-in diagonal approximation). @p inv is row-major [nBins][nMels]. */
+    void setInverseMel (const float* inv, int nBins, int nMels);
+
+    /** log-mel -> linear magnitude spectrum (numBins). Uses the pinv if set. */
+    void melToMagnitude (const float* melLog, float* magOut);
+
+    /** Build the complex spectrum from @p mag and @p phase, inverse FFT to a
+        time frame (fftSize samples, NOT windowed). */
+    void magnitudeToFrame (const float* mag, const float* phase, float* outFrame);
+
     /** Window @p frame, FFT, write power spectrum (fftSize/2 + 1 bins). */
     void computeMagnitude (const float* frame, int numSamples, float* magOut);
 
@@ -50,6 +61,9 @@ private:
     std::vector<float> fftBuffer;                  // 2 * fftSize for JUCE FFT
     std::vector<float> ifftBuffer;                 // 2 * fftSize for inverse
     std::vector<std::vector<float>> melFilters;    // [numMels][numBins]
-    std::vector<float> colNorm;                    // [numBins] inverse-mel norm
+    std::vector<float> colNorm;                    // [numBins] diagonal inverse-mel norm
     std::vector<float> melLinScratch;              // [numMels]
+    std::vector<float> invMel;                     // [numBins * numMels] pinv (row-major)
+    std::vector<float> magScratch;                 // [numBins] for melToFrame
+    bool hasInvMel = false;
 };

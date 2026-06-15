@@ -99,14 +99,17 @@ See [`docs/TRAINING_GUIDE.md`](docs/TRAINING_GUIDE.md) for the full walkthrough.
 - ✅ RTNeural export + self-contained C++ inference engine (`NNModel`), validated
   against PyTorch to ~1e-8; load models via the editor's **Load Models...** button
   or `$AVT_MODELS_DIR`
-- ✅ Audible output path: mel normalization (baked into `model_info.json`) →
-  encode/decode → **mel-inversion resynthesis** (transformed mel + input phase →
-  ISTFT → overlap-add). DSP round-trip validated at unity gain
+- ✅ Audible output path: librosa-exact mel filterbank + normalization (baked into
+  `model_info.json`) → encode/decode → **mel-inversion resynthesis** via the
+  pseudo-inverse filterbank (transformed mel + input phase → ISTFT → overlap-add).
+  Features match training to Δ=0; reconstruction is spectrally flat
   (`training/test_resynthesis.py`).
+- ✅ Controls: **Style Shift** (style blend) and **Brightness** (±12 dB spectral
+  tilt) and **Formant** (spectral-envelope warp) are wired. **Pitch** is not
+  (true pitch shift needs a phase vocoder; the path reuses the input's phase).
 - ⚠️ The frame-rate WaveRNN head is **bypassed** for audio (it can't synthesize
-  speech); the inversion path uses the *input's* phase, so it conveys the
-  transformed spectral envelope but not pitch/phase changes. A neural vocoder is
-  the next quality step.
+  speech). Quality is limited by the small model + phase reuse; a neural vocoder
+  is the next step.
 
 ## References
 

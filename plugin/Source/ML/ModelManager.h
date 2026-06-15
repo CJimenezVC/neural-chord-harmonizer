@@ -16,8 +16,9 @@ struct ModelInfo
     double sampleRate = 24000.0;
     int hopLength = 128;
     std::vector<float> melMean, melStd;
-    std::vector<float> melFb;   // [melBins * melFbBins] row-major (Slaney filterbank)
-    int melFbBins = 0;          // = n_fft/2 + 1
+    std::vector<float> melFb;     // [melBins * melFbBins] row-major (Slaney filterbank)
+    int melFbBins = 0;            // = n_fft/2 + 1
+    std::vector<float> invMelFb;  // [melFbBins * melBins] row-major (pinv of melFb)
 };
 
 /**

@@ -50,18 +50,22 @@ bool ModelManager::parseInfo (const juce::File& infoFile)
     loadArray (json["mel_mean"], modelInfo.melMean);
     loadArray (json["mel_std"],  modelInfo.melStd);
 
-    // Mel filterbank: nested [melBins][nBins] -> flat row-major.
-    modelInfo.melFb.clear();
-    modelInfo.melFbBins = 0;
-    if (auto* rows = json["mel_fb"].getArray())
+    // Nested [rows][cols] JSON arrays -> flat row-major; returns the column count.
+    auto loadMatrix = [] (const juce::var& v, std::vector<float>& dst) -> int
     {
-        for (auto& row : *rows)
-            if (auto* cols = row.getArray())
-            {
-                modelInfo.melFbBins = cols->size();
-                for (auto& c : *cols)
-                    modelInfo.melFb.push_back ((float) (double) c);
-            }
-    }
+        dst.clear();
+        int cols = 0;
+        if (auto* rows = v.getArray())
+            for (auto& row : *rows)
+                if (auto* c = row.getArray())
+                {
+                    cols = c->size();
+                    for (auto& x : *c)
+                        dst.push_back ((float) (double) x);
+                }
+        return cols;
+    };
+    modelInfo.melFbBins = loadMatrix (json["mel_fb"], modelInfo.melFb);     // [melBins][nBins]
+    loadMatrix (json["inv_mel_fb"], modelInfo.invMelFb);                    // [nBins][melBins]
     return true;
 }

@@ -148,7 +148,11 @@ def main(cfg: dict) -> None:
     mel_fb = librosa.filters.mel(sr=a["sample_rate"], n_fft=a["n_fft"], n_mels=a["n_mels"],
                                  fmin=a["fmin"], fmax=a["fmax"])         # [n_mels, n_bins]
     info["mel_fb"] = mel_fb.astype(np.float32).tolist()
-    print(f"[ok] embedded mel filterbank {mel_fb.shape}")
+    # Proper pseudo-inverse for mel -> linear POWER resynthesis (the diagonal
+    # approximation over-boosts mid/high bands; pinv reconstructs ~flat).
+    inv_fb = np.linalg.pinv(mel_fb)                                      # [n_bins, n_mels]
+    info["inv_mel_fb"] = inv_fb.astype(np.float32).tolist()
+    print(f"[ok] embedded mel filterbank {mel_fb.shape} + pinv {inv_fb.shape}")
 
     (out / "model_info.json").write_text(json.dumps(info))
     print(f"[ok] wrote {out / 'model_info.json'}")

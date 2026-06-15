@@ -1,10 +1,12 @@
 #include "NeuralAudioProcessor.h"
 
 #include <algorithm>
+#include <cmath>
 
 void NeuralAudioProcessor::prepare (double sampleRate, int frame)
 {
     frameSize = frame;
+    numBins = frame / 2 + 1;
     styleInterp.prepare (styleDim);
     synth.prepare (sampleRate, frameSize, melBins, fMin, fMax);
 
@@ -13,6 +15,46 @@ void NeuralAudioProcessor::prepare (double sampleRate, int frame)
     styleMod.assign  ((size_t) styleDim, 0.0f);
     melOut.assign    ((size_t) melBins, 0.0f);
     melDenorm.assign ((size_t) melBins, 0.0f);
+    magBuf.assign    ((size_t) numBins, 0.0f);
+    magWarp.assign   ((size_t) numBins, 0.0f);
+}
+
+void NeuralAudioProcessor::applyBrightness (float* mag, float brightness) const
+{
+    if (std::abs (brightness) < 1.0e-4f)
+        return;
+    // ±12 dB spectral tilt centred at mid-band (low cut / high boost as
+    // brightness rises). Operates on magnitude.
+    for (int k = 0; k < numBins; ++k)
+    {
+        const float frac = (float) k / (float) (numBins - 1) - 0.5f;   // [-0.5, 0.5]
+        mag[k] *= std::pow (10.0f, brightness * frac * (12.0f / 20.0f));
+    }
+}
+
+void NeuralAudioProcessor::applyFormantShift (const float* mag, float semitones, float* out) const
+{
+    if (std::abs (semitones) < 1.0e-3f)
+    {
+        std::copy (mag, mag + numBins, out);
+        return;
+    }
+    // Warp the spectral envelope along frequency: source bin = k / ratio.
+    const float ratio = std::pow (2.0f, semitones / 12.0f);
+    for (int k = 0; k < numBins; ++k)
+    {
+        const float src = (float) k / ratio;
+        const int i = (int) src;
+        if (i >= 0 && i + 1 < numBins)
+        {
+            const float t = src - (float) i;
+            out[k] = mag[i] * (1.0f - t) + mag[i + 1] * t;   // linear interp
+        }
+        else
+        {
+            out[k] = 0.0f;
+        }
+    }
 }
 
 void NeuralAudioProcessor::reset()
@@ -58,10 +100,16 @@ int NeuralAudioProcessor::processFrame (const Features& feats, float* audioOut, 
                                            + info.melMean[(size_t) i]
                                      : melOut[(size_t) i];
 
-    // 4) Resynthesize a waveform frame from the transformed mel + input phase.
-    synth.melToFrame (melDenorm.data(), feats.phase.data(), audioOut);
+    // 4) log-mel -> linear magnitude, then apply the spectral controls.
+    synth.melToMagnitude (melDenorm.data(), magBuf.data());
+    applyFormantShift (magBuf.data(), p.formantShift, magWarp.data());
+    applyBrightness (magWarp.data(), p.brightness);
+
+    // 5) Resynthesize a waveform frame using the input frame's phase. Apply the
+    //    makeup gain with a tanh soft-limiter so hot input can't clip harshly.
+    synth.magnitudeToFrame (magWarp.data(), feats.phase.data(), audioOut);
     for (int n = 0; n < frameSize; ++n)
-        audioOut[n] *= outputGain;
+        audioOut[n] = std::tanh (audioOut[n] * outputGain);
 
     return frameSize;
 }

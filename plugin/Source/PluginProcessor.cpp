@@ -83,6 +83,8 @@ void AdaptiveVoiceTransformProcessor::configureForRates()
         const auto& info = modelManager.info();
         featureExtractor.setMelFilterbank (info.melFb.data(), info.melBins, info.melFbBins);
         neuralProcessor.setMelFilterbank  (info.melFb.data(), info.melBins, info.melFbBins);
+        if (! info.invMelFb.empty())
+            neuralProcessor.setInverseMel (info.invMelFb.data(), info.melFbBins, info.melBins);
     }
 
     downsampler.prepare (hostSampleRate, modelSampleRate);   // ratio = host/model

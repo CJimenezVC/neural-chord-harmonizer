@@ -26,6 +26,7 @@ void SpectrogramProcessor::prepare (double sampleRate, int size, int nMels,
     fftBuffer.assign ((size_t) (2 * size), 0.0f);
     ifftBuffer.assign ((size_t) (2 * size), 0.0f);
     melLinScratch.assign ((size_t) numMels, 0.0f);
+    magScratch.assign ((size_t) numBins, 0.0f);
     buildMelFilterbank (sampleRate, fMin, fMax);
     buildInverseMel();
 }
@@ -141,24 +142,58 @@ void SpectrogramProcessor::magnitudeToLogMel (const float* magnitude, float* mel
     }
 }
 
-void SpectrogramProcessor::melToFrame (const float* melLog, const float* phase, float* outFrame)
+void SpectrogramProcessor::setInverseMel (const float* inv, int nBins, int nMels)
 {
-    // log-mel -> linear mel energies.
-    for (int m = 0; m < numMels; ++m)
-        melLinScratch[(size_t) m] = std::exp (melLog[m]);
+    if (nBins <= 0 || nMels <= 0)
+        return;
+    invMel.assign ((size_t) (numBins * numMels), 0.0f);
+    for (int k = 0; k < nBins && k < numBins; ++k)
+        for (int m = 0; m < nMels && m < numMels; ++m)
+            invMel[(size_t) (k * numMels + m)] = inv[k * nMels + m];
+    hasInvMel = true;
+}
 
-    // Inverse-mel to a linear POWER spectrum, sqrt to a magnitude, then build
-    // the complex spectrum using the supplied (input-frame) phase.
+void SpectrogramProcessor::melToMagnitude (const float* melLog, float* magOut)
+{
+    for (int m = 0; m < numMels; ++m)
+        melLinScratch[(size_t) m] = std::exp (melLog[m]);   // power mel energies
+
+    if (hasInvMel)
+    {
+        for (int k = 0; k < numBins; ++k)
+        {
+            const float* w = &invMel[(size_t) (k * numMels)];
+            float p = 0.0f;
+            for (int m = 0; m < numMels; ++m)
+                p += w[m] * melLinScratch[(size_t) m];       // linear power (pinv)
+            magOut[k] = std::sqrt (std::max (0.0f, p));
+        }
+    }
+    else
+    {
+        for (int k = 0; k < numBins; ++k)                    // diagonal fallback
+        {
+            float acc = 0.0f;
+            for (int m = 0; m < numMels; ++m)
+                acc += melFilters[(size_t) m][(size_t) k] * melLinScratch[(size_t) m];
+            magOut[k] = std::sqrt (std::max (0.0f, acc) / colNorm[(size_t) k]);
+        }
+    }
+}
+
+void SpectrogramProcessor::magnitudeToFrame (const float* mag, const float* phase, float* outFrame)
+{
     for (int k = 0; k < numBins; ++k)
     {
-        float acc = 0.0f;
-        for (int m = 0; m < numMels; ++m)
-            acc += melFilters[(size_t) m][(size_t) k] * melLinScratch[(size_t) m];
-        const float mag = std::sqrt (std::max (0.0f, acc) / colNorm[(size_t) k]);
-        ifftBuffer[(size_t) (2 * k)]     = mag * std::cos (phase[k]);
-        ifftBuffer[(size_t) (2 * k + 1)] = mag * std::sin (phase[k]);
+        ifftBuffer[(size_t) (2 * k)]     = mag[k] * std::cos (phase[k]);
+        ifftBuffer[(size_t) (2 * k + 1)] = mag[k] * std::sin (phase[k]);
     }
-
     fft->performRealOnlyInverseTransform (ifftBuffer.data());
     std::copy (ifftBuffer.begin(), ifftBuffer.begin() + fftSize, outFrame);
+}
+
+void SpectrogramProcessor::melToFrame (const float* melLog, const float* phase, float* outFrame)
+{
+    melToMagnitude (melLog, magScratch.data());
+    magnitudeToFrame (magScratch.data(), phase, outFrame);
 }

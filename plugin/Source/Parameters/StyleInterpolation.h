@@ -27,17 +27,13 @@ public:
             target[(size_t) i] = t[i];
     }
 
-    /** Blend @p sourceStyle toward the target and apply brightness tilt. */
+    /** Blend @p sourceStyle toward the target by StyleShift. (Brightness and
+        formant are applied as spectral DSP in NeuralAudioProcessor.) */
     void apply (const float* sourceStyle, const StyleParams& p, float* out) const
     {
         const float a = p.styleShift;
         for (int i = 0; i < dim; ++i)
-        {
-            float v = (1.0f - a) * sourceStyle[i] + a * target[(size_t) i];
-            // Brightness: tilt later style dims (higher-frequency content).
-            const float tilt = 1.0f + p.brightness * (float) i / (float) dim;
-            out[i] = v * tilt;
-        }
+            out[i] = (1.0f - a) * sourceStyle[i] + a * target[(size_t) i];
     }
 
     int getDim() const noexcept { return dim; }

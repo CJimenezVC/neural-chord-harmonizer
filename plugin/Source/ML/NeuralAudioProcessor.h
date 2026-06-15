@@ -30,6 +30,12 @@ public:
         synth.setMelFilterbank (fb, nMels, nBins);
     }
 
+    /** Use the pseudo-inverse filterbank for resynthesis. */
+    void setInverseMel (const float* inv, int nBins, int nMels)
+    {
+        synth.setInverseMel (inv, nBins, nMels);
+    }
+
     /** Process one feature frame; returns audio sample count written. */
     int processFrame (const Features& feats, float* audioOut, int maxSamples);
 
@@ -41,7 +47,11 @@ private:
 
     SpectrogramProcessor synth;      // mel -> waveform resynthesis (ISTFT)
 
+    void applyBrightness (float* mag, float brightness) const;   // spectral tilt
+    void applyFormantShift (const float* mag, float semitones, float* out) const;
+
     int frameSize = 512;
+    int numBins = 257;
     int styleDim = 64;
     int melBins = 128;
     float fMin = 20.0f, fMax = 8000.0f;
@@ -54,4 +64,6 @@ private:
     std::vector<float> styleMod;     // after interpolation
     std::vector<float> melOut;       // decoder output (normalized)
     std::vector<float> melDenorm;    // denormalized log-mel for resynthesis
+    std::vector<float> magBuf;       // linear magnitude spectrum (numBins)
+    std::vector<float> magWarp;      // formant-warped magnitude (numBins)
 };
