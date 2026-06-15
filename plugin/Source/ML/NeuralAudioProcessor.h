@@ -59,8 +59,14 @@ private:
     // energy loss), so output ≈ input level. Model-specific; tune to taste.
     float outputGain = 3.0f;
 
+    // The encoder pools features over a window in training; in single-frame
+    // streaming we approximate that window-mean with an EMA of the style vector.
+    float styleAlpha = 0.95f;
+    bool  styleInit = false;
+
     std::vector<float> melNorm;      // normalized encoder/decoder input
-    std::vector<float> styleVec;     // encoder output
+    std::vector<float> styleVec;     // encoder output (per frame)
+    std::vector<float> styleAvg;     // EMA-smoothed style
     std::vector<float> styleMod;     // after interpolation
     std::vector<float> melOut;       // decoder output (normalized)
     std::vector<float> melDenorm;    // denormalized log-mel for resynthesis

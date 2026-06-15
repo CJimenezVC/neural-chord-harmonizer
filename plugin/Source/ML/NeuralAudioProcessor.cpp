@@ -12,7 +12,9 @@ void NeuralAudioProcessor::prepare (double sampleRate, int frame)
 
     melNorm.assign   ((size_t) melBins, 0.0f);
     styleVec.assign  ((size_t) styleDim, 0.0f);
+    styleAvg.assign  ((size_t) styleDim, 0.0f);
     styleMod.assign  ((size_t) styleDim, 0.0f);
+    styleInit = false;
     melOut.assign    ((size_t) melBins, 0.0f);
     melDenorm.assign ((size_t) melBins, 0.0f);
     magBuf.assign    ((size_t) numBins, 0.0f);
@@ -60,6 +62,8 @@ void NeuralAudioProcessor::applyFormantShift (const float* mag, float semitones,
 void NeuralAudioProcessor::reset()
 {
     synth.reset();
+    styleInit = false;
+    std::fill (styleAvg.begin(), styleAvg.end(), 0.0f);
     if (models != nullptr)
         models->vocoder().reset();
 }
@@ -89,9 +93,21 @@ int NeuralAudioProcessor::processFrame (const Features& feats, float* audioOut, 
                                          / (info.melStd[(size_t) i] + 1e-8f)
                                    : feats.mel[(size_t) i];
 
-    // 2) Encode -> style modulation -> decode (all in normalized mel space).
+    // 2) Encode -> EMA-smooth the style (approximates training's window pooling)
+    //    -> style modulation -> decode (all in normalized mel space).
     models->encoder().encode (melNorm.data(), 1, styleVec.data());
-    styleInterp.apply (styleVec.data(), p, styleMod.data());
+    if (! styleInit)
+    {
+        std::copy (styleVec.begin(), styleVec.end(), styleAvg.begin());
+        styleInit = true;
+    }
+    else
+    {
+        for (int i = 0; i < styleDim; ++i)
+            styleAvg[(size_t) i] = styleAlpha * styleAvg[(size_t) i]
+                                 + (1.0f - styleAlpha) * styleVec[(size_t) i];
+    }
+    styleInterp.apply (styleAvg.data(), p, styleMod.data());
     models->decoder().decode (melNorm.data(), styleMod.data(), melOut.data());
 
     // 3) Denormalize the transformed mel back to log-mel.
