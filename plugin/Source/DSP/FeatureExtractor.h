@@ -28,6 +28,12 @@ public:
     void prepare (double sampleRate, int frameSize, int hopSize, int nMels = 128);
     void reset();
 
+    /** Use an exact (e.g. librosa) mel filterbank instead of the built-in one. */
+    void setMelFilterbank (const float* fb, int nMels, int nBins)
+    {
+        spectrogram.setMelFilterbank (fb, nMels, nBins);
+    }
+
     Features process (const float* frame, int numSamples);
 
     int getNumMels() const noexcept { return numMels; }

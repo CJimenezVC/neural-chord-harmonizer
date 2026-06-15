@@ -16,7 +16,11 @@ public:
                   float fMin = 20.0f, float fMax = 8000.0f);
     void reset();
 
-    /** Window @p frame, FFT, write magnitude spectrum (fftSize/2 + 1 bins). */
+    /** Replace the internally-built filterbank with an exact one (e.g. librosa's
+        Slaney filterbank from model_info.json). @p fb is row-major [nMels][nBins]. */
+    void setMelFilterbank (const float* fb, int nMels, int nBins);
+
+    /** Window @p frame, FFT, write power spectrum (fftSize/2 + 1 bins). */
     void computeMagnitude (const float* frame, int numSamples, float* magOut);
 
     /** Like computeMagnitude but also writes the per-bin phase (radians). */

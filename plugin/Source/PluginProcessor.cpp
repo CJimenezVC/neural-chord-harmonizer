@@ -76,6 +76,15 @@ void AdaptiveVoiceTransformProcessor::configureForRates()
     neuralProcessor.prepare (modelSampleRate, frameSize);
     neuralProcessor.setModels (&modelManager);
 
+    // Use the model's exact (librosa) mel filterbank so the plugin's features
+    // match training; otherwise the built-in approximation is wildly off.
+    if (modelManager.isLoaded() && ! modelManager.info().melFb.empty())
+    {
+        const auto& info = modelManager.info();
+        featureExtractor.setMelFilterbank (info.melFb.data(), info.melBins, info.melFbBins);
+        neuralProcessor.setMelFilterbank  (info.melFb.data(), info.melBins, info.melFbBins);
+    }
+
     downsampler.prepare (hostSampleRate, modelSampleRate);   // ratio = host/model
     upsampler.prepare   (modelSampleRate, hostSampleRate);   // ratio = model/host
 

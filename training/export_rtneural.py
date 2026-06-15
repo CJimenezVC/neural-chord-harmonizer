@@ -12,6 +12,7 @@ import argparse
 import json
 from pathlib import Path
 
+import librosa
 import numpy as np
 import torch
 import yaml
@@ -140,6 +141,14 @@ def main(cfg: dict) -> None:
         print(f"[ok] embedded mel normalization stats ({len(stats['mel_mean'])} bins)")
     else:
         print(f"[warn] stats file not found ({stats_path}); plugin will skip normalization")
+
+    # Bake the exact (Slaney, area-normalized) mel filterbank so the plugin's
+    # features match librosa.feature.melspectrogram (which uses a POWER spectrum).
+    a = cfg["audio"]
+    mel_fb = librosa.filters.mel(sr=a["sample_rate"], n_fft=a["n_fft"], n_mels=a["n_mels"],
+                                 fmin=a["fmin"], fmax=a["fmax"])         # [n_mels, n_bins]
+    info["mel_fb"] = mel_fb.astype(np.float32).tolist()
+    print(f"[ok] embedded mel filterbank {mel_fb.shape}")
 
     (out / "model_info.json").write_text(json.dumps(info))
     print(f"[ok] wrote {out / 'model_info.json'}")

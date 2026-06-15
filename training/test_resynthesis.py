@@ -48,6 +48,7 @@ def main() -> None:
                                 fmin=a["fmin"], fmax=a["fmax"])          # [n_mels, n_bins]
     colnorm = (melfb ** 2).sum(0) + 1e-8                                  # [n_bins]
     win = np.hanning(n_fft).astype(np.float32)
+    # librosa.feature.melspectrogram uses a POWER spectrum (|STFT|^2).
 
     stats = json.loads(Path(cfg["data"]["stats"]).read_text())
     mean = np.asarray(stats["mel_mean"], np.float32)
@@ -68,7 +69,7 @@ def main() -> None:
             frame = y[s:s + n_fft] * win
             spec = np.fft.rfft(frame)
             mag, phase = np.abs(spec), np.angle(spec)
-            mel = np.log(melfb @ mag + 1e-6).astype(np.float32)
+            mel = np.log(melfb @ (mag ** 2) + 1e-6).astype(np.float32)   # power
 
             if enc is not None:
                 mn = ((mel - mean) / (std + 1e-8)).astype(np.float32)
@@ -77,13 +78,14 @@ def main() -> None:
                 mel_hat = dec(t, style).numpy().ravel()
                 mel = mel_hat * (std + 1e-8) + mean        # denormalize
 
-            mel_lin = np.exp(mel)
-            mag2 = (melfb.T @ mel_lin) / colnorm           # diagonal inverse-mel
+            mel_lin = np.exp(mel)                          # power mel energies
+            power = np.maximum(0.0, (melfb.T @ mel_lin) / colnorm)   # inverse-mel
+            mag2 = np.sqrt(power)                           # power -> magnitude
             spec2 = mag2 * np.exp(1j * phase)
             rec = np.fft.irfft(spec2, n=n_fft).astype(np.float32)
             out[s:s + n_fft] += rec * win                  # synthesis window + OLA
 
-    out *= 1.0 / 1.5
+    out *= 3.0  # 1/1.5 COLA x ~4.5 makeup (matches plugin)
     sf.write(args.out, out[:len(y)], sr)
     rms_in, rms_out = np.sqrt((y ** 2).mean()), np.sqrt((out[:len(y)] ** 2).mean())
     print(f"identity={args.identity}")

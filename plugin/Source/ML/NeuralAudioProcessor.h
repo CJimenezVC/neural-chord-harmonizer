@@ -24,6 +24,12 @@ public:
     void setModels (ModelManager* m) noexcept { models = m; }
     void setStyleParams (const StyleParams& p) noexcept;
 
+    /** Use an exact (e.g. librosa) mel filterbank for resynthesis. */
+    void setMelFilterbank (const float* fb, int nMels, int nBins)
+    {
+        synth.setMelFilterbank (fb, nMels, nBins);
+    }
+
     /** Process one feature frame; returns audio sample count written. */
     int processFrame (const Features& feats, float* audioOut, int maxSamples);
 
@@ -39,7 +45,9 @@ private:
     int styleDim = 64;
     int melBins = 128;
     float fMin = 20.0f, fMax = 8000.0f;
-    float outputGain = 1.0f / 1.5f;  // Hann synthesis window, 75% overlap (COLA ≈ 1.5)
+    // Output gain = (1/1.5 Hann-OLA COLA) × (~4.5 makeup for the small model's
+    // energy loss), so output ≈ input level. Model-specific; tune to taste.
+    float outputGain = 3.0f;
 
     std::vector<float> melNorm;      // normalized encoder/decoder input
     std::vector<float> styleVec;     // encoder output

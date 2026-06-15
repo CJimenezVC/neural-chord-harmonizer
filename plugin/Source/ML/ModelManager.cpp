@@ -49,5 +49,19 @@ bool ModelManager::parseInfo (const juce::File& infoFile)
     };
     loadArray (json["mel_mean"], modelInfo.melMean);
     loadArray (json["mel_std"],  modelInfo.melStd);
+
+    // Mel filterbank: nested [melBins][nBins] -> flat row-major.
+    modelInfo.melFb.clear();
+    modelInfo.melFbBins = 0;
+    if (auto* rows = json["mel_fb"].getArray())
+    {
+        for (auto& row : *rows)
+            if (auto* cols = row.getArray())
+            {
+                modelInfo.melFbBins = cols->size();
+                for (auto& c : *cols)
+                    modelInfo.melFb.push_back ((float) (double) c);
+            }
+    }
     return true;
 }

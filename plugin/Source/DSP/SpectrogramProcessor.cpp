@@ -51,6 +51,21 @@ void SpectrogramProcessor::buildInverseMel()
     }
 }
 
+void SpectrogramProcessor::setMelFilterbank (const float* fb, int nMels, int nBins)
+{
+    if (nMels <= 0 || nBins <= 0)
+        return;
+
+    numMels = nMels;
+    melFilters.assign ((size_t) nMels, std::vector<float> ((size_t) nBins, 0.0f));
+    for (int m = 0; m < nMels; ++m)
+        for (int k = 0; k < nBins && k < numBins; ++k)
+            melFilters[(size_t) m][(size_t) k] = fb[m * nBins + k];
+
+    melLinScratch.assign ((size_t) nMels, 0.0f);
+    buildInverseMel();
+}
+
 void SpectrogramProcessor::buildMelFilterbank (double sampleRate, float fMin, float fMax)
 {
     melFilters.assign ((size_t) numMels, std::vector<float> ((size_t) numBins, 0.0f));
@@ -91,7 +106,7 @@ void SpectrogramProcessor::computeMagnitude (const float* frame, int numSamples,
     {
         const float re = fftBuffer[(size_t) (2 * k)];
         const float im = fftBuffer[(size_t) (2 * k + 1)];
-        magOut[k] = std::sqrt (re * re + im * im);
+        magOut[k] = re * re + im * im;            // power (matches librosa default)
     }
 }
 
@@ -109,7 +124,7 @@ void SpectrogramProcessor::computeMagnitudeAndPhase (const float* frame, int num
     {
         const float re = fftBuffer[(size_t) (2 * k)];
         const float im = fftBuffer[(size_t) (2 * k + 1)];
-        magOut[k]   = std::sqrt (re * re + im * im);
+        magOut[k]   = re * re + im * im;          // power (matches librosa default)
         phaseOut[k] = std::atan2 (im, re);
     }
 }
@@ -132,14 +147,14 @@ void SpectrogramProcessor::melToFrame (const float* melLog, const float* phase, 
     for (int m = 0; m < numMels; ++m)
         melLinScratch[(size_t) m] = std::exp (melLog[m]);
 
-    // Inverse-mel to a linear magnitude spectrum, then build the complex
-    // spectrum using the supplied (input-frame) phase.
+    // Inverse-mel to a linear POWER spectrum, sqrt to a magnitude, then build
+    // the complex spectrum using the supplied (input-frame) phase.
     for (int k = 0; k < numBins; ++k)
     {
         float acc = 0.0f;
         for (int m = 0; m < numMels; ++m)
             acc += melFilters[(size_t) m][(size_t) k] * melLinScratch[(size_t) m];
-        const float mag = std::max (0.0f, acc) / colNorm[(size_t) k];
+        const float mag = std::sqrt (std::max (0.0f, acc) / colNorm[(size_t) k]);
         ifftBuffer[(size_t) (2 * k)]     = mag * std::cos (phase[k]);
         ifftBuffer[(size_t) (2 * k + 1)] = mag * std::sin (phase[k]);
     }
