@@ -12,6 +12,7 @@ void FeatureExtractor::prepare (double sampleRate, int frame, int hop, int nMels
     formants.prepare (sampleRate, /*lpcOrder*/ 12);
 
     scratch.mel.assign ((size_t) nMels, 0.0f);
+    scratch.phase.assign ((size_t) (frameSize / 2 + 1), 0.0f);
     magnitude.assign ((size_t) (frameSize / 2 + 1), 0.0f);
 }
 
@@ -23,8 +24,10 @@ void FeatureExtractor::reset()
 
 Features FeatureExtractor::process (const float* frame, int numSamples)
 {
-    // 1) STFT magnitude + log-mel projection.
-    spectrogram.computeMagnitude (frame, numSamples, magnitude.data());
+    // 1) STFT magnitude + phase, then log-mel projection. Phase is retained so
+    //    the transformed mel can be resynthesized with the input's phase.
+    spectrogram.computeMagnitudeAndPhase (frame, numSamples, magnitude.data(),
+                                          scratch.phase.data());
     spectrogram.magnitudeToLogMel (magnitude.data(), scratch.mel.data());
 
     // 2) Pitch (YIN) with confidence.

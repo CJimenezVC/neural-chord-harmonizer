@@ -19,11 +19,23 @@ public:
     /** Window @p frame, FFT, write magnitude spectrum (fftSize/2 + 1 bins). */
     void computeMagnitude (const float* frame, int numSamples, float* magOut);
 
+    /** Like computeMagnitude but also writes the per-bin phase (radians). */
+    void computeMagnitudeAndPhase (const float* frame, int numSamples,
+                                   float* magOut, float* phaseOut);
+
     /** Project a magnitude spectrum onto the log-mel filterbank. */
     void magnitudeToLogMel (const float* magnitude, float* melOut) const;
 
+    /** Resynthesize one time frame (fftSize samples) from a log-mel spectrum
+        and a per-bin phase: inverse-mel -> linear magnitude, combine with phase,
+        inverse FFT. Output is NOT windowed (the overlap-add stage windows it). */
+    void melToFrame (const float* melLog, const float* phase, float* outFrame);
+
+    int getNumBins() const noexcept { return numBins; }
+
 private:
     void buildMelFilterbank (double sampleRate, float fMin, float fMax);
+    void buildInverseMel();
 
     std::unique_ptr<juce::dsp::FFT> fft;
     int fftSize = 512;
@@ -32,5 +44,8 @@ private:
 
     std::vector<float> window;
     std::vector<float> fftBuffer;                  // 2 * fftSize for JUCE FFT
+    std::vector<float> ifftBuffer;                 // 2 * fftSize for inverse
     std::vector<std::vector<float>> melFilters;    // [numMels][numBins]
+    std::vector<float> colNorm;                    // [numBins] inverse-mel norm
+    std::vector<float> melLinScratch;              // [numMels]
 };

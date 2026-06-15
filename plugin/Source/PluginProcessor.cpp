@@ -186,11 +186,11 @@ void AdaptiveVoiceTransformProcessor::processBlock (juce::AudioBuffer<float>& bu
         const auto features = featureExtractor.process (scratchFrame.data(), frameSize);
         const int produced  = neuralProcessor.processFrame (features, scratchAudio.data(),
                                                             (int) scratchAudio.size());
-        // The vocoder emits exactly one hop of samples per frame (frame-rate
-        // synthesis), so the chunks tile contiguously — no overlap-add
-        // windowing. (OverlapAddBuffer is retained for a future frame-length
-        // synthesis vocoder.)
-        modelOutFifo.push (scratchAudio.data(), produced);
+        // produced == frameSize: a windowed synthesis frame. Overlap-add it,
+        // then drain the hop's worth of finished samples to the output FIFO.
+        outputBuffer.add (scratchAudio.data(), produced);
+        const int ready = outputBuffer.read (olaScratch.data(), hopSize);
+        modelOutFifo.push (olaScratch.data(), ready);
     }
 
     // 3) Upsample 24 kHz output back to the host rate, filling the block exactly.

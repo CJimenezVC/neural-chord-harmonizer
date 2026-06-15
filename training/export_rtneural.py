@@ -126,9 +126,22 @@ def main(cfg: dict) -> None:
         "sample_rate": cfg["audio"]["sample_rate"],
         "hop_length": cfg["audio"]["hop_length"],
         "n_fft": cfg["audio"]["n_fft"],
-        "stats": cfg["data"]["stats"],
+        "fmin": cfg["audio"]["fmin"],
+        "fmax": cfg["audio"]["fmax"],
     }
-    (out / "model_info.json").write_text(json.dumps(info, indent=2))
+
+    # Bake the mel normalization stats directly into model_info so the plugin
+    # applies the exact same (mel - mean) / std the model was trained on.
+    stats_path = Path(cfg["data"]["stats"])
+    if stats_path.exists():
+        stats = json.loads(stats_path.read_text())
+        info["mel_mean"] = stats["mel_mean"]
+        info["mel_std"] = stats["mel_std"]
+        print(f"[ok] embedded mel normalization stats ({len(stats['mel_mean'])} bins)")
+    else:
+        print(f"[warn] stats file not found ({stats_path}); plugin will skip normalization")
+
+    (out / "model_info.json").write_text(json.dumps(info))
     print(f"[ok] wrote {out / 'model_info.json'}")
 
 

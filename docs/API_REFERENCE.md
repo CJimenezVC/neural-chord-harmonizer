@@ -84,12 +84,14 @@ int   VocoderNetwork::synthesize(const float* melFrame, float* audioOut, int max
 void  VocoderNetwork::reset();   // clear recurrent state
 ```
 
-> **Vocoder caveat:** the trained WaveRNN head emits one 256-way mu-law
-> categorical value *per mel frame* (frame-rate), not one sample per step. The
-> wrapper decodes the argmax to an amplitude and fills the hop with a click-free
-> ramp — so it runs the model end-to-end, but output is a frame-rate envelope,
-> not speech-quality audio. A sample-rate vocoder (or mel inversion) is the next
-> step for real audio.
+> **Audio path:** the trained WaveRNN head emits one categorical value *per mel
+> frame* (frame-rate), which cannot synthesize speech, so it is **bypassed** for
+> output. Instead `NeuralAudioProcessor` resynthesizes audio from the decoder's
+> transformed mel via **mel inversion**: denormalize → `exp` → diagonal
+> inverse-mel → combine with the *input frame's phase* → ISTFT → overlap-add
+> (`SpectrogramProcessor::melToFrame`). This conveys the transformed spectral
+> envelope; because it reuses the input phase, pitch/phase changes are not
+> rendered. A neural vocoder is the next quality step.
 
 ### `NeuralAudioProcessor`
 ```cpp
