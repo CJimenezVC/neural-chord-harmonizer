@@ -35,6 +35,9 @@ AdaptiveVoiceTransformEditor::AdaptiveVoiceTransformEditor (AdaptiveVoiceTransfo
     modelStatusLabel.setJustificationType (juce::Justification::centredRight);
     refreshModelStatus();
 
+    scopeScratch.assign (4096, 0.0f);
+    startTimerHz (30);   // pump scope taps into the before/after analyzers
+
     auto& apvts = p.getValueTreeState();
     styleAttachment      = std::make_unique<SliderAttachment> (apvts, "styleShift",   styleKnob);
     brightnessAttachment = std::make_unique<SliderAttachment> (apvts, "brightness",   brightnessSlider);
@@ -46,7 +49,23 @@ AdaptiveVoiceTransformEditor::AdaptiveVoiceTransformEditor (AdaptiveVoiceTransfo
 
 AdaptiveVoiceTransformEditor::~AdaptiveVoiceTransformEditor()
 {
+    stopTimer();
     setLookAndFeel (nullptr);
+}
+
+void AdaptiveVoiceTransformEditor::timerCallback()
+{
+    const int n = (int) scopeScratch.size();
+
+    int got = processorRef.readScopeBefore (scopeScratch.data(), n);
+    for (int i = 0; i < got; ++i)
+        analyzerBefore.pushSample (scopeScratch[(size_t) i]);
+
+    got = processorRef.readScopeAfter (scopeScratch.data(), n);
+    for (int i = 0; i < got; ++i)
+        analyzerAfter.pushSample (scopeScratch[(size_t) i]);
+
+    refreshModelStatus();
 }
 
 void AdaptiveVoiceTransformEditor::paint (juce::Graphics& g)

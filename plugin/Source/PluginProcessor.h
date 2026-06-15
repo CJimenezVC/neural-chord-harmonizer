@@ -60,9 +60,21 @@ public:
         rate (read from model_info.json). Safe to call while playing. */
     bool loadModels (const juce::File& dir);
 
+    /** UI scope taps: drain recent input ("before") / output ("after") samples.
+        Single-consumer (message thread); returns the number of samples copied. */
+    int readScopeBefore (float* dst, int maxSamples);
+    int readScopeAfter  (float* dst, int maxSamples);
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     StyleParams readStyleParams() const;
+
+    static constexpr int scopeFifoSize = 1 << 14;
+    juce::AbstractFifo scopeBeforeFifo { scopeFifoSize };
+    juce::AbstractFifo scopeAfterFifo  { scopeFifoSize };
+    std::vector<float> scopeBeforeBuf, scopeAfterBuf;
+    static void pushScope (juce::AbstractFifo&, std::vector<float>&, const float* src, int n);
+    static int  readScope (juce::AbstractFifo&, std::vector<float>&, float* dst, int maxSamples);
 
     /** (Re)prepare all rate-dependent buffers from the current host/model rates. */
     void configureForRates();

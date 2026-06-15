@@ -95,6 +95,11 @@ void AdaptiveVoiceTransformProcessor::configureForRates()
     hostInFifo.prepare   (hostBlockSize * 4 + 64);
     modelOutFifo.prepare (frameSize * 8 + maxModelPerBlock + 64);
 
+    scopeBeforeBuf.assign ((size_t) scopeFifoSize, 0.0f);
+    scopeAfterBuf.assign  ((size_t) scopeFifoSize, 0.0f);
+    scopeBeforeFifo.reset();
+    scopeAfterFifo.reset();
+
     downsampler.reset();
     upsampler.reset();
     hostInFifo.reset();
@@ -161,8 +166,15 @@ void AdaptiveVoiceTransformProcessor::processBlock (juce::AudioBuffer<float>& bu
     const int numSamples = buffer.getNumSamples();
     neuralProcessor.setStyleParams (readStyleParams());
 
+    // Scope tap: input ("before").
+    pushScope (scopeBeforeFifo, scopeBeforeBuf, buffer.getReadPointer (0), numSamples);
+
     if (! modelManager.isLoaded())
-        return;   // pass-through until models are available
+    {
+        // Pass-through until models are available; "after" == input.
+        pushScope (scopeAfterFifo, scopeAfterBuf, buffer.getReadPointer (0), numSamples);
+        return;
+    }
 
     // 1) Downsample the host block to 24 kHz and queue it for analysis.
     hostInFifo.push (buffer.getReadPointer (0), numSamples);
@@ -207,6 +219,49 @@ void AdaptiveVoiceTransformProcessor::processBlock (juce::AudioBuffer<float>& bu
 
     for (int ch = 1; ch < buffer.getNumChannels(); ++ch)
         buffer.copyFrom (ch, 0, out, numSamples);
+
+    // Scope tap: output ("after").
+    pushScope (scopeAfterFifo, scopeAfterBuf, out, numSamples);
+}
+
+void AdaptiveVoiceTransformProcessor::pushScope (juce::AbstractFifo& fifo,
+                                                 std::vector<float>& buf,
+                                                 const float* src, int n)
+{
+    if (buf.empty())
+        return;
+    const auto scope = fifo.write (n);
+    if (scope.blockSize1 > 0)
+        std::copy (src, src + scope.blockSize1, buf.begin() + scope.startIndex1);
+    if (scope.blockSize2 > 0)
+        std::copy (src + scope.blockSize1,
+                   src + scope.blockSize1 + scope.blockSize2, buf.begin() + scope.startIndex2);
+}
+
+int AdaptiveVoiceTransformProcessor::readScope (juce::AbstractFifo& fifo,
+                                                std::vector<float>& buf, float* dst, int maxSamples)
+{
+    if (buf.empty())
+        return 0;
+    const int n = std::min (maxSamples, fifo.getNumReady());
+    const auto scope = fifo.read (n);
+    if (scope.blockSize1 > 0)
+        std::copy (buf.begin() + scope.startIndex1,
+                   buf.begin() + scope.startIndex1 + scope.blockSize1, dst);
+    if (scope.blockSize2 > 0)
+        std::copy (buf.begin() + scope.startIndex2,
+                   buf.begin() + scope.startIndex2 + scope.blockSize2, dst + scope.blockSize1);
+    return scope.blockSize1 + scope.blockSize2;
+}
+
+int AdaptiveVoiceTransformProcessor::readScopeBefore (float* dst, int maxSamples)
+{
+    return readScope (scopeBeforeFifo, scopeBeforeBuf, dst, maxSamples);
+}
+
+int AdaptiveVoiceTransformProcessor::readScopeAfter (float* dst, int maxSamples)
+{
+    return readScope (scopeAfterFifo, scopeAfterBuf, dst, maxSamples);
 }
 
 juce::AudioProcessorEditor* AdaptiveVoiceTransformProcessor::createEditor()

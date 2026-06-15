@@ -12,7 +12,8 @@
     Editor UI: style knob plus brightness / formant / pitch sliders, a preset
     manager, and before/after spectrum analyzers.
 */
-class AdaptiveVoiceTransformEditor : public juce::AudioProcessorEditor
+class AdaptiveVoiceTransformEditor : public juce::AudioProcessorEditor,
+                                     private juce::Timer
 {
 public:
     explicit AdaptiveVoiceTransformEditor (AdaptiveVoiceTransformProcessor&);
@@ -22,6 +23,8 @@ public:
     void resized() override;
 
 private:
+    void timerCallback() override;   // pumps the scope taps into the analyzers
+
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
 
     AdaptiveVoiceTransformProcessor& processorRef;
@@ -40,6 +43,7 @@ private:
     juce::TextButton loadModelsButton { "Load Models..." };
     juce::Label      modelStatusLabel;
     std::unique_ptr<juce::FileChooser> chooser;
+    std::vector<float> scopeScratch;   // drains the processor's scope FIFOs
 
     void chooseModelsFolder();
     void refreshModelStatus();

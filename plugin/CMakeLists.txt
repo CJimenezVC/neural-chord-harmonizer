@@ -45,6 +45,10 @@ juce_add_plugin(AdaptiveVoiceTransform
     PRODUCT_NAME              "Adaptive Voice Transform"
     IS_SYNTH                  FALSE
     NEEDS_MIDI_INPUT          FALSE
+    # The standalone captures live audio input; on macOS this is required or the
+    # OS silently provides no input (NSMicrophoneUsageDescription + entitlement).
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "Adaptive Voice Transform processes microphone/line input."
     COPY_PLUGIN_AFTER_BUILD   FALSE)
 
 juce_generate_juce_header(AdaptiveVoiceTransform)
