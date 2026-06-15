@@ -6,10 +6,9 @@
 #include "VoiceTransformParameters.h"
 
 /**
-    Applies user parameters to the encoder's style vector before decoding:
-    blends source/target style by StyleShift and bakes a brightness tilt into
-    the style space. Formant/pitch shifts are applied in the DSP stages but are
-    surfaced here so the decoder can condition on them.
+    Blends the encoder's style vector toward a target by StyleShift before
+    decoding. (Brightness and formant are applied later as spectral DSP in
+    NeuralAudioProcessor.)
 */
 class StyleInterpolation
 {

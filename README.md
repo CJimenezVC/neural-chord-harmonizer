@@ -99,17 +99,18 @@ See [`docs/TRAINING_GUIDE.md`](docs/TRAINING_GUIDE.md) for the full walkthrough.
 - ✅ RTNeural export + self-contained C++ inference engine (`NNModel`), validated
   against PyTorch to ~1e-8; load models via the editor's **Load Models...** button
   or `$AVT_MODELS_DIR`
-- ✅ Audible output path: librosa-exact mel filterbank + normalization (baked into
-  `model_info.json`) → encode/decode → **mel-inversion resynthesis** via the
-  pseudo-inverse filterbank (transformed mel + input phase → ISTFT → overlap-add).
-  Features match training to Δ=0; reconstruction is spectrally flat
-  (`training/test_resynthesis.py`).
-- ✅ Controls: **Style Shift** (style blend) and **Brightness** (±12 dB spectral
-  tilt) and **Formant** (spectral-envelope warp) are wired. **Pitch** is not
-  (true pitch shift needs a phase vocoder; the path reuses the input's phase).
-- ⚠️ The frame-rate WaveRNN head is **bypassed** for audio (it can't synthesize
-  speech). Quality is limited by the small model + phase reuse; a neural vocoder
-  is the next step.
+- ✅ Feature parity: training preprocessing calls the plugin's **exact C++ DSP**
+  via a pybind11 binding (`bindings/`), so there is no Python/C++ feature drift.
+- ✅ Audible output path: **envelope-ratio filter** — the decoder's spectral
+  envelope is applied as a smooth, time-varying gain on the *input's* magnitude
+  and phase (phase-coherent → no static), reshaping timbre/formants while
+  preserving the voice's pitch/harmonics. `corr(in, out) ≈ 0.997` offline.
+- ✅ Controls (all wired): **Style Shift** (style blend), **Brightness** (±12 dB
+  tilt), **Formant** (spectral-envelope warp). No Pitch control — true pitch
+  shifting needs a phase vocoder (separate resynthesis path).
+- ⚠️ It's a timbre/formant transform, not full speaker conversion (no target
+  embedding); the WaveRNN head is unused. A neural vocoder + target-speaker
+  conditioning is the path to real voice conversion.
 
 ## References
 

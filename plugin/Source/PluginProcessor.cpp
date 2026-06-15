@@ -11,7 +11,6 @@ namespace ParamID
     constexpr auto styleShift   = "styleShift";
     constexpr auto brightness   = "brightness";
     constexpr auto formantShift = "formantShift";
-    constexpr auto pitchShift   = "pitchShift";
 }
 
 AdaptiveVoiceTransformProcessor::AdaptiveVoiceTransformProcessor()
@@ -47,9 +46,6 @@ AdaptiveVoiceTransformProcessor::createParameterLayout()
     layout.add (std::make_unique<AudioParameterFloat> (
         ParameterID { ParamID::formantShift, 1 }, "Formant Shift",
         NormalisableRange<float> (-12.0f, 12.0f), 0.0f));
-    layout.add (std::make_unique<AudioParameterFloat> (
-        ParameterID { ParamID::pitchShift, 1 }, "Pitch Shift",
-        NormalisableRange<float> (-24.0f, 24.0f), 0.0f));
 
     return layout;
 }
@@ -165,7 +161,6 @@ StyleParams AdaptiveVoiceTransformProcessor::readStyleParams() const
     p.styleShift   = apvts.getRawParameterValue (ParamID::styleShift)->load();
     p.brightness   = apvts.getRawParameterValue (ParamID::brightness)->load();
     p.formantShift = apvts.getRawParameterValue (ParamID::formantShift)->load();
-    p.pitchShift   = apvts.getRawParameterValue (ParamID::pitchShift)->load();
     return p;
 }
 

@@ -9,8 +9,8 @@
 #include "UI/StyleKnob.h"
 
 /**
-    Editor UI: style knob plus brightness / formant / pitch sliders, a preset
-    manager, and before/after spectrum analyzers.
+    Editor UI: style knob plus brightness / formant sliders, a model loader, a
+    preset manager, and before/after spectrum analyzers.
 */
 class AdaptiveVoiceTransformEditor : public juce::AudioProcessorEditor,
                                      private juce::Timer
@@ -31,12 +31,12 @@ private:
     AvtLookAndFeel lookAndFeel;
 
     StyleKnob       styleKnob;
-    juce::Slider    brightnessSlider, formantSlider, pitchSlider;
-    juce::Label     styleLabel, brightnessLabel, formantLabel, pitchLabel;
+    juce::Slider    brightnessSlider, formantSlider;
+    juce::Label     styleLabel, brightnessLabel, formantLabel;
     juce::Label     beforeLabel, afterLabel;
 
     std::unique_ptr<SliderAttachment> styleAttachment, brightnessAttachment,
-                                      formantAttachment, pitchAttachment;
+                                      formantAttachment;
 
     PresetManager   presetManager;
     SpectrumAnalyzer analyzerBefore, analyzerAfter;

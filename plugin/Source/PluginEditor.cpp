@@ -34,9 +34,7 @@ AdaptiveVoiceTransformEditor::AdaptiveVoiceTransformEditor (AdaptiveVoiceTransfo
 
     configureSlider (brightnessSlider, brightnessLabel, "Brightness", *this);
     configureSlider (formantSlider,    formantLabel,    "Formant",    *this);
-    configureSlider (pitchSlider,      pitchLabel,      "Pitch",      *this);
     formantSlider.setTextValueSuffix (" st");
-    pitchSlider.setTextValueSuffix (" st");
 
     addAndMakeVisible (presetManager);
     addAndMakeVisible (analyzerBefore);
@@ -57,7 +55,6 @@ AdaptiveVoiceTransformEditor::AdaptiveVoiceTransformEditor (AdaptiveVoiceTransfo
     styleAttachment      = std::make_unique<SliderAttachment> (apvts, "styleShift",   styleKnob);
     brightnessAttachment = std::make_unique<SliderAttachment> (apvts, "brightness",   brightnessSlider);
     formantAttachment    = std::make_unique<SliderAttachment> (apvts, "formantShift", formantSlider);
-    pitchAttachment      = std::make_unique<SliderAttachment> (apvts, "pitchShift",   pitchSlider);
 
     setSize (720, 420);
 }
@@ -114,16 +111,16 @@ void AdaptiveVoiceTransformEditor::resized()
     presetManager.setBounds (area.removeFromBottom (28));
     area.removeFromBottom (6);
 
-    // Control grid: 4 equal columns, each = name label (top) + knob (below).
+    // Control grid: 3 equal columns, each = name label (top) + knob (below).
     auto controls = area;
-    juce::Component* knobs[]  = { &styleKnob, &brightnessSlider, &formantSlider, &pitchSlider };
-    juce::Label*     labels[] = { &styleLabel, &brightnessLabel, &formantLabel, &pitchLabel };
-    const int colW = controls.getWidth() / 4;
-    for (int i = 0; i < 4; ++i)
+    juce::Component* knobs[]  = { &styleKnob, &brightnessSlider, &formantSlider };
+    juce::Label*     labels[] = { &styleLabel, &brightnessLabel, &formantLabel };
+    const int colW = controls.getWidth() / 3;
+    for (int i = 0; i < 3; ++i)
     {
-        auto col = (i == 3) ? controls : controls.removeFromLeft (colW);
+        auto col = (i == 2) ? controls : controls.removeFromLeft (colW);
         labels[i]->setBounds (col.removeFromTop (18));
-        knobs[i]->setBounds (col.reduced (6, 2));
+        knobs[i]->setBounds (col.reduced (8, 2));
     }
 }
 
