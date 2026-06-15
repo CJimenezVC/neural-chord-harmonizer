@@ -23,8 +23,11 @@ import numpy as np
 import yaml
 from tqdm import tqdm
 
-SOURCES = ["SEF1", "SEF2", "SEM1", "SEM2"]
-TARGETS = ["TEF1", "TEF2", "TEM1", "TEM2"]   # English Task-1 targets
+# All 8 English speakers act as both source and target (every A->B pair over the
+# sentences they share). This maximizes parallel data and source variety. The
+# cross-lingual Task-2 targets are excluded: they are non-parallel (different
+# languages/sentences), so they can't be DTW-aligned for parallel VC.
+SPEAKERS = ["SEF1", "SEF2", "SEM1", "SEM2", "TEF1", "TEF2", "TEM1", "TEM2"]
 
 
 def main(cfg: dict) -> None:
@@ -43,9 +46,11 @@ def main(cfg: dict) -> None:
 
         n_pairs = 0
         with h5py.File(out_path, "w") as out:
-            out.attrs["targets"] = json.dumps(TARGETS)
-            for src, tgt in product(SOURCES, TARGETS):
-                tid = TARGETS.index(tgt)
+            out.attrs["targets"] = json.dumps(SPEAKERS)
+            for src, tgt in product(SPEAKERS, SPEAKERS):
+                if src == tgt:
+                    continue
+                tid = SPEAKERS.index(tgt)
                 shared = sorted(sentences(src) & sentences(tgt))
                 for sent in tqdm(shared, desc=f"{src}->{tgt}", leave=False):
                     sm = np.asarray(h5in[index[(src, sent)]]["mel"], np.float32)   # [Ts, M]
