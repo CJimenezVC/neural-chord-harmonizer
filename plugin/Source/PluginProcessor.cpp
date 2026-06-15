@@ -48,21 +48,34 @@ AdaptiveVoiceTransformProcessor::createParameterLayout()
 void AdaptiveVoiceTransformProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     hostSampleRate = sampleRate;
+    hostBlockSize  = samplesPerBlock;
 
-    // DSP + neural stages all operate at the fixed model rate (24 kHz).
+    // Adopt the loaded model's rate if available; otherwise keep the default.
+    if (modelManager.isLoaded())
+        modelSampleRate = modelManager.info().sampleRate;
+
+    configureForRates();
+}
+
+void AdaptiveVoiceTransformProcessor::configureForRates()
+{
+    if (hostSampleRate <= 0.0 || modelSampleRate <= 0.0 || hostBlockSize <= 0)
+        return;
+
+    // DSP + neural stages all operate at the model rate (read from model_info).
     featureExtractor.prepare (modelSampleRate, frameSize, hopSize);
     neuralProcessor.prepare (modelSampleRate, frameSize);
     neuralProcessor.setModels (&modelManager);
 
-    downsampler.prepare (hostSampleRate, modelSampleRate);   // ratio = host/24k
-    upsampler.prepare   (modelSampleRate, hostSampleRate);   // ratio = 24k/host
+    downsampler.prepare (hostSampleRate, modelSampleRate);   // ratio = host/model
+    upsampler.prepare   (modelSampleRate, hostSampleRate);   // ratio = model/host
 
     inputBuffer.prepare (frameSize, hopSize, 1);
     outputBuffer.prepare (frameSize, hopSize, 1);
 
-    // Worst-case model samples per host block (host rate > model rate).
+    // Worst-case model samples per host block (largest when host rate < model).
     const double toModel = modelSampleRate / hostSampleRate;
-    const int maxModelPerBlock = (int) std::ceil (samplesPerBlock * toModel) + 4;
+    const int maxModelPerBlock = (int) std::ceil (hostBlockSize * toModel) + 4;
 
     scratchFrame.assign ((size_t) frameSize, 0.0f);
     scratchAudio.assign ((size_t) frameSize, 0.0f);
@@ -70,7 +83,7 @@ void AdaptiveVoiceTransformProcessor::prepareToPlay (double sampleRate, int samp
     olaScratch.assign   ((size_t) hopSize, 0.0f);
 
     // Generous FIFO headroom so the audio thread never reallocates.
-    hostInFifo.prepare  (samplesPerBlock * 4 + 64);
+    hostInFifo.prepare   (hostBlockSize * 4 + 64);
     modelOutFifo.prepare (frameSize * 8 + maxModelPerBlock + 64);
 
     downsampler.reset();
@@ -81,6 +94,25 @@ void AdaptiveVoiceTransformProcessor::prepareToPlay (double sampleRate, int samp
     // Latency = model-rate frame + lookahead, expressed in host samples.
     const double toHost = hostSampleRate / modelSampleRate;
     setLatencySamples ((int) std::ceil ((frameSize + 4 * hopSize) * toHost));
+}
+
+bool AdaptiveVoiceTransformProcessor::loadModels (const juce::File& dir)
+{
+    // Loading happens off the audio thread; suspend processing while we swap
+    // models and re-prepare the rate-dependent buffers.
+    suspendProcessing (true);
+
+    const bool ok = modelManager.loadFromDirectory (dir);
+    if (ok)
+    {
+        const double rate = modelManager.info().sampleRate;
+        if (rate > 0.0)
+            modelSampleRate = rate;
+        configureForRates();   // no-op until prepareToPlay has set host rate/block
+    }
+
+    suspendProcessing (false);
+    return ok;
 }
 
 void AdaptiveVoiceTransformProcessor::releaseResources()

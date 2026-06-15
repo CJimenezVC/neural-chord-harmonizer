@@ -13,7 +13,7 @@ struct ModelInfo
 {
     int styleDim = 64;
     int melBins = 128;
-    double sampleRate = 48000.0;
+    double sampleRate = 24000.0;
     int hopLength = 128;
     std::vector<float> melMean, melStd;
 };

@@ -56,9 +56,16 @@ public:
     juce::AudioProcessorValueTreeState& getValueTreeState() noexcept { return apvts; }
     ModelManager& getModelManager() noexcept { return modelManager; }
 
+    /** Load RTNeural models from @p dir and re-prepare at the model's sample
+        rate (read from model_info.json). Safe to call while playing. */
+    bool loadModels (const juce::File& dir);
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     StyleParams readStyleParams() const;
+
+    /** (Re)prepare all rate-dependent buffers from the current host/model rates. */
+    void configureForRates();
 
     juce::AudioProcessorValueTreeState apvts;
 
@@ -66,19 +73,19 @@ private:
     FeatureExtractor    featureExtractor;
     NeuralAudioProcessor neuralProcessor;
 
-    // Fixed model inference rate; the host stream is resampled to/from this.
-    static constexpr double modelSampleRate = 24000.0;
-
-    Resampler   downsampler;   // host rate → 24 kHz
-    Resampler   upsampler;     // 24 kHz   → host rate
+    Resampler   downsampler;   // host rate → model rate
+    Resampler   upsampler;     // model rate → host rate
     SampleFifo  hostInFifo;    // host-rate input awaiting downsampling
-    SampleFifo  modelOutFifo;  // 24 kHz vocoder output awaiting upsampling
+    SampleFifo  modelOutFifo;  // model-rate vocoder output awaiting upsampling
 
-    CircularAudioBuffer inputBuffer;    // 24 kHz analysis-frame ring
-    OverlapAddBuffer    outputBuffer;   // 24 kHz overlap-add reconstruction
+    CircularAudioBuffer inputBuffer;    // model-rate analysis-frame ring
+    OverlapAddBuffer    outputBuffer;   // model-rate overlap-add reconstruction
 
-    double hostSampleRate = 48000.0;
-    int frameSize = 512;   // model-rate (24 kHz) analysis frame
+    // Model inference rate; default until model_info.json overrides it on load.
+    double modelSampleRate = 24000.0;
+    double hostSampleRate  = 48000.0;
+    int    hostBlockSize   = 0;
+    int frameSize = 512;   // model-rate analysis frame
     int hopSize   = 128;   // model-rate hop
 
     // Pre-allocated scratch buffers (audio thread must not allocate).

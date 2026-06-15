@@ -33,7 +33,7 @@ bool ModelManager::parseInfo (const juce::File& infoFile)
 
     modelInfo.styleDim   = (int) json.getProperty ("style_dim", 64);
     modelInfo.melBins    = (int) json.getProperty ("mel_bins", 128);
-    modelInfo.sampleRate = (double) json.getProperty ("sample_rate", 48000.0);
+    modelInfo.sampleRate = (double) json.getProperty ("sample_rate", 24000.0);
     modelInfo.hopLength  = (int) json.getProperty ("hop_length", 128);
     return true;
 }

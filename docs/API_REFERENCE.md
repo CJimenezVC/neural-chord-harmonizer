@@ -108,6 +108,18 @@ Standard JUCE lifecycle: `prepareToPlay`, `processBlock`, `releaseResources`,
 state save/load via `AudioProcessorValueTreeState`. Reports latency via
 `setLatencySamples`.
 
+```cpp
+// Load RTNeural models and re-prepare at the model's sample rate
+// (read from model_info.json). Suspends processing during the swap;
+// safe to call while playing.
+bool loadModels (const juce::File& dir);
+```
+
+The neural chain runs at `model_info.json`'s `sample_rate` (24 kHz by default).
+`prepareToPlay` adopts that rate if models are already loaded; `loadModels`
+re-prepares the resamplers/buffers if models arrive later. The host stream is
+resampled to/from this rate (see `DSP/Resampler.h`).
+
 ### `PluginEditor : juce::AudioProcessorEditor`
 Hosts `StyleKnob`, brightness/formant/pitch sliders, `PresetManager`, and two
 `SpectrumAnalyzer` views (before/after).
