@@ -108,7 +108,9 @@ def train(cfg: dict, device: str = "auto") -> None:
         writer.add_scalar("val/total", val, epoch)
         print(f"epoch {epoch}: val={val:.4f}", flush=True)
 
-        torch.save(model.state_dict(), ckpt_dir / f"epoch_{epoch:03d}.pt")
+        # Rolling checkpoint (overwrite) so long runs don't fill the disk;
+        # the best model is additionally saved to models/pytorch below.
+        torch.save({"epoch": epoch, "model": model.state_dict()}, ckpt_dir / "last.pt")
         if val < best_val:
             best_val = val
             save_submodules(model, pt_out)
