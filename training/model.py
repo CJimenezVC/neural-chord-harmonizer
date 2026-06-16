@@ -1,12 +1,17 @@
 """PyTorch model definitions for Neural Chord Harmonizer.
 
-Three modules trained jointly:
+Active model (the harmonizer's detector):
+  - ChordNet: log-frequency feature (61 semitone bins) -> 12 pitch-class
+    probabilities. A small dense, multi-label classifier (61->256->256->12,
+    sigmoid). Exported to RTNeural by export_chord.py and run in the plugin.
+
+Legacy (deprecated voice-conversion engine, kept for reference only):
   - ConvEncoder:    mel-spectrogram -> compact style vector
   - ConvDecoder:    (mel, style)    -> transformed mel-spectrogram
   - WaveRNNVocoder: mel             -> waveform (mu-law, autoregressive)
 
-The architectures are intentionally lightweight (~500K params total) so they
-export cleanly to RTNeural and run in real time inside the plugin.
+All architectures are intentionally lightweight so they export cleanly to
+RTNeural and run in real time inside the plugin.
 """
 from __future__ import annotations
 
