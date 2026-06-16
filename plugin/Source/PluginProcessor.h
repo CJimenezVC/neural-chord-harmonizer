@@ -1,28 +1,26 @@
 #pragma once
 
-#include <juce_audio_processors/juce_audio_processors.h>
-
+#include <atomic>
 #include <vector>
 
-#include "DSP/CircularAudioBuffer.h"
-#include "DSP/FeatureExtractor.h"
-#include "DSP/OverlapAddBuffer.h"
+#include <juce_audio_processors/juce_audio_processors.h>
+
+#include "DSP/PitchShifter.h"
 #include "DSP/Resampler.h"
 #include "DSP/SampleFifo.h"
-#include "ML/ModelManager.h"
-#include "ML/NeuralAudioProcessor.h"
-#include "Parameters/StyleInterpolation.h"
+#include "DSP/YINPitchDetector.h"
+#include "ML/ChordDetector.h"
 
 /**
-    Main audio processor for Adaptive Voice Transform.
+    Chord-following vocal harmonizer / auto-tune.
 
-    Dual sample-rate design: the host runs at any rate (typically 48 kHz) but
-    the neural models run at a fixed 24 kHz. The block is downsampled to 24 kHz,
-    pushed through the hybrid DSP-neural chain (feature extraction → encoder →
-    style modulation → decoder → vocoder), then upsampled back to the host rate.
+    A sidechain instrument (guitar/bass/piano) drives a neural polyphonic
+    pitch-class detector; the main voice input is pitch-shifted (formant-
+    preserving) to the nearest tone of the detected chord. The "Tune" control
+    sweeps from natural (gentle) to tight (hard-snap / T-Pain).
 
-    All heavy buffers are pre-allocated in prepareToPlay(); processBlock() is
-    real-time safe (no allocations, no locks).
+    Detector runs at 24 kHz (its trained feature rate); the voice path runs at
+    the host rate.
 */
 class AdaptiveVoiceTransformProcessor : public juce::AudioProcessor
 {
@@ -54,57 +52,40 @@ public:
     void setStateInformation (const void*, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState& getValueTreeState() noexcept { return apvts; }
-    ModelManager& getModelManager() noexcept { return modelManager; }
-
-    /** Load RTNeural models from @p dir and re-prepare at the model's sample
-        rate (read from model_info.json). Safe to call while playing. */
     bool loadModels (const juce::File& dir);
+    bool modelsLoaded() const noexcept { return chordDetector.isLoaded(); }
 
-    /** UI scope taps: drain recent input ("before") / output ("after") samples.
-        Single-consumer (message thread); returns the number of samples copied. */
-    int readScopeBefore (float* dst, int maxSamples);
-    int readScopeAfter  (float* dst, int maxSamples);
+    /** 12-bit mask of currently-detected pitch classes (for the editor). */
+    int getChordMask() const noexcept { return chordMask.load(); }
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
-    StyleParams readStyleParams() const;
-
-    static constexpr int scopeFifoSize = 1 << 14;
-    juce::AbstractFifo scopeBeforeFifo { scopeFifoSize };
-    juce::AbstractFifo scopeAfterFifo  { scopeFifoSize };
-    std::vector<float> scopeBeforeBuf, scopeAfterBuf;
-    static void pushScope (juce::AbstractFifo&, std::vector<float>&, const float* src, int n);
-    static int  readScope (juce::AbstractFifo&, std::vector<float>&, float* dst, int maxSamples);
-
-    /** (Re)prepare all rate-dependent buffers from the current host/model rates. */
-    void configureForRates();
+    void runDetector();                       // drains scFifo, updates chordMask
+    float chooseRatio (float voiceHz, float tune) const;
 
     juce::AudioProcessorValueTreeState apvts;
 
-    ModelManager        modelManager;
-    FeatureExtractor    featureExtractor;
-    NeuralAudioProcessor neuralProcessor;
+    ChordDetector     chordDetector;
+    PitchShifter      pitchShifter;
+    YINPitchDetector  voiceYin;
+    Resampler         scDownsampler;          // sidechain host rate -> 24 kHz
 
-    Resampler   downsampler;   // host rate → model rate
-    Resampler   upsampler;     // model rate → host rate
-    SampleFifo  hostInFifo;    // host-rate input awaiting downsampling
-    SampleFifo  modelOutFifo;  // model-rate vocoder output awaiting upsampling
+    static constexpr double detectorRate = 24000.0;
+    double hostRate = 48000.0;
+    int    detectorFft = 2048, detectorHop = 512;
 
-    CircularAudioBuffer inputBuffer;    // model-rate analysis-frame ring
-    OverlapAddBuffer    outputBuffer;   // model-rate overlap-add reconstruction
+    SampleFifo scFifo;                        // 24 kHz instrument awaiting detection
+    std::vector<float> scDownScratch;         // resampled sidechain block
+    std::vector<float> detectFrame;           // one detector frame (24 kHz)
+    std::vector<float> pcAct;                 // 12 activations
 
-    // Model inference rate; default until model_info.json overrides it on load.
-    double modelSampleRate = 24000.0;
-    double hostSampleRate  = 48000.0;
-    int    hostBlockSize   = 0;
-    int frameSize = 512;   // model-rate analysis frame
-    int hopSize   = 128;   // model-rate hop
+    std::vector<float> voiceMono, outMono;    // per-block scratch (host rate)
+    std::vector<float> yinBuf;                // rolling voice window for F0
+    int yinWindow = 2048, yinFill = 0;
 
-    // Pre-allocated scratch buffers (audio thread must not allocate).
-    std::vector<float> scratchFrame;   // one analysis frame (24 kHz)
-    std::vector<float> scratchAudio;   // vocoder output for one frame (24 kHz)
-    std::vector<float> downScratch;    // downsampled block (24 kHz)
-    std::vector<float> olaScratch;     // hop-sized OLA drain (24 kHz)
+    float chordSmoothed[12] = { 0 };
+    float smoothedRatio = 1.0f;
+    std::atomic<int> chordMask { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AdaptiveVoiceTransformProcessor)
 };

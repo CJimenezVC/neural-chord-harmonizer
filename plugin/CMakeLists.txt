@@ -53,30 +53,19 @@ juce_add_plugin(AdaptiveVoiceTransform
 
 juce_generate_juce_header(AdaptiveVoiceTransform)
 
+# Chord-following harmonizer. (Voice-conversion sources from the earlier
+# direction remain in the tree but are no longer built.)
 target_sources(AdaptiveVoiceTransform PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
 
-    Source/DSP/FeatureExtractor.cpp
     Source/DSP/YINPitchDetector.cpp
-    Source/DSP/FormantAnalyzer.cpp
-    Source/DSP/SpectrogramProcessor.cpp
     Source/DSP/OverlapAddBuffer.cpp
 
     Source/ML/NNModel.cpp
-    Source/ML/ModelManager.cpp
-    Source/ML/EncoderNetwork.cpp
-    Source/ML/DecoderNetwork.cpp
-    Source/ML/VocoderNetwork.cpp
-    Source/ML/NeuralAudioProcessor.cpp
+    Source/ML/ChordDetector.cpp
 
-    Source/UI/StyleKnob.cpp
-    Source/UI/PresetManager.cpp
-    Source/UI/LookAndFeel.cpp
-    Source/UI/SpectrumAnalyzer.cpp
-
-    Source/Utilities/Performance.cpp
-    Source/Utilities/Logger.cpp)
+    Source/UI/LookAndFeel.cpp)
 
 target_include_directories(AdaptiveVoiceTransform PRIVATE Source)
 

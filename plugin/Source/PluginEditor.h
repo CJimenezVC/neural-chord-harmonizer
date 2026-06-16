@@ -1,16 +1,15 @@
 #pragma once
 
+#include <memory>
+
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "PluginProcessor.h"
 #include "UI/LookAndFeel.h"
-#include "UI/PresetManager.h"
-#include "UI/SpectrumAnalyzer.h"
-#include "UI/StyleKnob.h"
 
 /**
-    Editor UI: style knob plus brightness / formant sliders, a model loader, a
-    preset manager, and before/after spectrum analyzers.
+    Harmonizer UI: a Tune knob (natural .. tight), a live readout of the
+    detected chord (12 note lamps), and a model loader.
 */
 class AdaptiveVoiceTransformEditor : public juce::AudioProcessorEditor,
                                      private juce::Timer
@@ -23,33 +22,22 @@ public:
     void resized() override;
 
 private:
-    void timerCallback() override;   // pumps the scope taps into the analyzers
+    void timerCallback() override;
+    void chooseModelsFolder();
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
 
     AdaptiveVoiceTransformProcessor& processorRef;
     AvtLookAndFeel lookAndFeel;
 
-    StyleKnob       styleKnob;
-    juce::Slider    brightnessSlider, formantSlider;
-    juce::Label     styleLabel, brightnessLabel, formantLabel;
-    juce::Label     beforeLabel, afterLabel;
+    juce::Slider tuneKnob;
+    juce::Label  tuneLabel, titleLabel, chordLabel, statusLabel;
+    std::unique_ptr<SliderAttachment> tuneAttachment;
 
-    std::unique_ptr<SliderAttachment> styleAttachment, brightnessAttachment,
-                                      formantAttachment;
-
-    PresetManager   presetManager;
-    SpectrumAnalyzer analyzerBefore, analyzerAfter;
-
-    juce::TextButton loadModelsButton { "Load Models..." };
-    juce::Label      modelStatusLabel;
-    juce::ComboBox   targetBox;          // target speaker (conversion mode)
-    juce::Label      targetLabel;
+    juce::TextButton loadButton { "Load Models..." };
     std::unique_ptr<juce::FileChooser> chooser;
-    std::vector<float> scopeScratch;   // drains the processor's scope FIFOs
 
-    void chooseModelsFolder();
-    void refreshModelStatus();
+    int chordMask = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AdaptiveVoiceTransformEditor)
 };

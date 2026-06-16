@@ -3,30 +3,23 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 
 #include "PluginEditor.h"
 
-namespace ParamID
-{
-    constexpr auto styleShift   = "styleShift";
-    constexpr auto brightness   = "brightness";
-    constexpr auto formantShift = "formantShift";
-    constexpr auto target       = "target";
-}
+namespace ParamID { constexpr auto tune = "tune"; }
 
 AdaptiveVoiceTransformProcessor::AdaptiveVoiceTransformProcessor()
     : AudioProcessor (BusesProperties()
-          .withInput  ("Input",  juce::AudioChannelSet::mono(), true)
-          .withOutput ("Output", juce::AudioChannelSet::mono(), true)),
+          .withInput  ("Input",     juce::AudioChannelSet::stereo(), true)
+          .withOutput ("Output",    juce::AudioChannelSet::stereo(), true)
+          .withInput  ("Sidechain", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
-    // Dev convenience: auto-load models from $AVT_MODELS_DIR if set, e.g.
-    //   export AVT_MODELS_DIR=/path/to/adaptive-voice-transform/models/pretrained
     if (const char* dir = std::getenv ("AVT_MODELS_DIR"))
     {
         juce::File d (juce::String::fromUTF8 (dir));
-        if (d.isDirectory())
-            loadModels (d);
+        if (d.isDirectory()) loadModels (d);
     }
 }
 
@@ -37,241 +30,162 @@ AdaptiveVoiceTransformProcessor::createParameterLayout()
 {
     using namespace juce;
     AudioProcessorValueTreeState::ParameterLayout layout;
-
     layout.add (std::make_unique<AudioParameterFloat> (
-        ParameterID { ParamID::styleShift, 1 }, "Style Shift",
-        NormalisableRange<float> (0.0f, 1.0f), 0.0f));
-    layout.add (std::make_unique<AudioParameterFloat> (
-        ParameterID { ParamID::brightness, 1 }, "Timbral Brightness",
-        NormalisableRange<float> (-1.0f, 1.0f), 0.0f));
-    layout.add (std::make_unique<AudioParameterFloat> (
-        ParameterID { ParamID::formantShift, 1 }, "Formant Shift",
-        NormalisableRange<float> (-12.0f, 12.0f), 0.0f));
-    layout.add (std::make_unique<AudioParameterInt> (
-        ParameterID { ParamID::target, 1 }, "Target", 0, 7, 0));
-
+        ParameterID { ParamID::tune, 1 }, "Tune",
+        NormalisableRange<float> (0.0f, 1.0f), 0.7f));   // natural .. tight
     return layout;
 }
 
 void AdaptiveVoiceTransformProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    hostSampleRate = sampleRate;
-    hostBlockSize  = samplesPerBlock;
+    hostRate = sampleRate;
 
-    // Adopt the loaded model's rate if available; otherwise keep the default.
-    if (modelManager.isLoaded())
-        modelSampleRate = modelManager.info().sampleRate;
+    pitchShifter.prepare (1024, 256);
+    voiceYin.prepare (hostRate, yinWindow);
+    scDownsampler.prepare (hostRate, detectorRate);   // ratio = host/24k
 
-    configureForRates();
-}
+    detectorFft = chordDetector.isLoaded() ? chordDetector.getFftSize() : 2048;
+    scFifo.prepare (detectorFft * 4);
+    detectFrame.assign ((size_t) detectorFft, 0.0f);
+    pcAct.assign (12, 0.0f);
 
-void AdaptiveVoiceTransformProcessor::configureForRates()
-{
-    if (hostSampleRate <= 0.0 || modelSampleRate <= 0.0 || hostBlockSize <= 0)
-        return;
+    const int maxScOut = (int) std::ceil (samplesPerBlock * detectorRate / hostRate) + 4;
+    scDownScratch.assign ((size_t) std::max (maxScOut, 64), 0.0f);
 
-    // DSP + neural stages all operate at the model rate (read from model_info).
-    featureExtractor.prepare (modelSampleRate, frameSize, hopSize);
-    neuralProcessor.prepare (modelSampleRate, frameSize);
-    neuralProcessor.setModels (&modelManager);
+    voiceMono.assign ((size_t) samplesPerBlock, 0.0f);
+    outMono.assign ((size_t) samplesPerBlock, 0.0f);
+    yinBuf.assign ((size_t) yinWindow, 0.0f);
+    yinFill = 0;
 
-    // Use the model's exact (librosa) mel filterbank so the plugin's features
-    // match training; otherwise the built-in approximation is wildly off.
-    if (modelManager.isLoaded() && ! modelManager.info().melFb.empty())
-    {
-        const auto& info = modelManager.info();
-        featureExtractor.setMelFilterbank (info.melFb.data(), info.melBins, info.melFbBins);
-        neuralProcessor.setMelFilterbank  (info.melFb.data(), info.melBins, info.melFbBins);
-        if (! info.invMelFb.empty())
-            neuralProcessor.setInverseMel (info.invMelFb.data(), info.melFbBins, info.melBins);
-    }
-
-    downsampler.prepare (hostSampleRate, modelSampleRate);   // ratio = host/model
-    upsampler.prepare   (modelSampleRate, hostSampleRate);   // ratio = model/host
-
-    inputBuffer.prepare (frameSize, hopSize, 1);
-    outputBuffer.prepare (frameSize, hopSize, 1);
-
-    // Worst-case model samples per host block (largest when host rate < model).
-    const double toModel = modelSampleRate / hostSampleRate;
-    const int maxModelPerBlock = (int) std::ceil (hostBlockSize * toModel) + 4;
-
-    scratchFrame.assign ((size_t) frameSize, 0.0f);
-    scratchAudio.assign ((size_t) frameSize, 0.0f);
-    downScratch.assign  ((size_t) std::max (maxModelPerBlock, frameSize), 0.0f);
-    olaScratch.assign   ((size_t) hopSize, 0.0f);
-
-    // Generous FIFO headroom so the audio thread never reallocates.
-    hostInFifo.prepare   (hostBlockSize * 4 + 64);
-    modelOutFifo.prepare (frameSize * 8 + maxModelPerBlock + 64);
-
-    scopeBeforeBuf.assign ((size_t) scopeFifoSize, 0.0f);
-    scopeAfterBuf.assign  ((size_t) scopeFifoSize, 0.0f);
-    scopeBeforeFifo.reset();
-    scopeAfterFifo.reset();
-
-    downsampler.reset();
-    upsampler.reset();
-    hostInFifo.reset();
-    modelOutFifo.reset();
-
-    // Latency = model-rate frame + lookahead, expressed in host samples.
-    const double toHost = hostSampleRate / modelSampleRate;
-    setLatencySamples ((int) std::ceil ((frameSize + 4 * hopSize) * toHost));
-}
-
-bool AdaptiveVoiceTransformProcessor::loadModels (const juce::File& dir)
-{
-    // Loading happens off the audio thread; suspend processing while we swap
-    // models and re-prepare the rate-dependent buffers.
-    suspendProcessing (true);
-
-    const bool ok = modelManager.loadFromDirectory (dir);
-    if (ok)
-    {
-        const double rate = modelManager.info().sampleRate;
-        if (rate > 0.0)
-            modelSampleRate = rate;
-        configureForRates();   // no-op until prepareToPlay has set host rate/block
-    }
-
-    suspendProcessing (false);
-    return ok;
+    std::fill (std::begin (chordSmoothed), std::end (chordSmoothed), 0.0f);
+    smoothedRatio = 1.0f;
+    setLatencySamples (pitchShifter.getLatencySamples());
 }
 
 void AdaptiveVoiceTransformProcessor::releaseResources()
 {
-    neuralProcessor.reset();
-    inputBuffer.reset();
-    outputBuffer.reset();
-    downsampler.reset();
-    upsampler.reset();
-    hostInFifo.reset();
-    modelOutFifo.reset();
+    pitchShifter.reset();
+    scFifo.reset();
 }
 
 bool AdaptiveVoiceTransformProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    const auto& in  = layouts.getMainInputChannelSet();
-    const auto& out = layouts.getMainOutputChannelSet();
-    return in == out && (in == juce::AudioChannelSet::mono()
-                         || in == juce::AudioChannelSet::stereo());
+    const auto& mainIn  = layouts.getMainInputChannelSet();
+    const auto& mainOut = layouts.getMainOutputChannelSet();
+    if (mainIn != mainOut || mainIn.isDisabled())
+        return false;
+    // Sidechain may be mono/stereo or disabled.
+    return true;
 }
 
-StyleParams AdaptiveVoiceTransformProcessor::readStyleParams() const
+bool AdaptiveVoiceTransformProcessor::loadModels (const juce::File& dir)
 {
-    StyleParams p;
-    p.styleShift   = apvts.getRawParameterValue (ParamID::styleShift)->load();
-    p.brightness   = apvts.getRawParameterValue (ParamID::brightness)->load();
-    p.formantShift = apvts.getRawParameterValue (ParamID::formantShift)->load();
-    p.targetId     = (int) apvts.getRawParameterValue (ParamID::target)->load();
-    return p;
+    suspendProcessing (true);
+    const bool ok = chordDetector.load (dir.getChildFile ("chordnet.rtneural"),
+                                        dir.getChildFile ("chord_info.json"));
+    suspendProcessing (false);
+    return ok;
+}
+
+void AdaptiveVoiceTransformProcessor::runDetector()
+{
+    while (scFifo.size() >= detectorFft)
+    {
+        std::copy (scFifo.data(), scFifo.data() + detectorFft, detectFrame.begin());
+        chordDetector.detect (detectFrame.data(), detectorFft, pcAct.data());
+        int mask = 0;
+        for (int i = 0; i < 12; ++i)
+        {
+            chordSmoothed[i] = 0.7f * chordSmoothed[i] + 0.3f * pcAct[(size_t) i];
+            if (chordSmoothed[i] > 0.5f) mask |= (1 << i);
+        }
+        chordMask.store (mask);
+        scFifo.consume (detectorHop);
+    }
+}
+
+float AdaptiveVoiceTransformProcessor::chooseRatio (float voiceHz, float tune) const
+{
+    if (voiceHz < 60.0f)
+        return 1.0f;
+    const float vMidi = 69.0f + 12.0f * std::log2 (voiceHz / 440.0f);
+
+    int best = -1;
+    float bestDist = 1.0e9f;
+    for (int m = chordDetector.getMidiLo(); m <= chordDetector.getMidiHi(); ++m)
+    {
+        if (chordSmoothed[m % 12] <= 0.5f) continue;
+        const float d = std::abs ((float) m - vMidi);
+        if (d < bestDist) { bestDist = d; best = m; }
+    }
+    if (best < 0)
+        return 1.0f;
+
+    const float targetHz = 440.0f * std::pow (2.0f, (best - 69) / 12.0f);
+    const float full = targetHz / voiceHz;
+    return std::pow (full, tune);          // tune 0 = no shift, 1 = full snap
 }
 
 void AdaptiveVoiceTransformProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                                     juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
-
     const int numSamples = buffer.getNumSamples();
-    neuralProcessor.setStyleParams (readStyleParams());
+    const float tune = apvts.getRawParameterValue (ParamID::tune)->load();
 
-    // Scope tap: input ("before").
-    pushScope (scopeBeforeFifo, scopeBeforeBuf, buffer.getReadPointer (0), numSamples);
+    auto mainIn  = getBusBuffer (buffer, true, 0);
+    auto mainOut = getBusBuffer (buffer, false, 0);
 
-    if (! modelManager.isLoaded())
+    // Voice = mono sum of the main input.
+    for (int n = 0; n < numSamples; ++n)
     {
-        // Pass-through until models are available; "after" == input.
-        pushScope (scopeAfterFifo, scopeAfterBuf, buffer.getReadPointer (0), numSamples);
-        return;
+        float s = 0.0f;
+        for (int ch = 0; ch < mainIn.getNumChannels(); ++ch) s += mainIn.getReadPointer (ch)[n];
+        voiceMono[(size_t) n] = s / (float) std::max (1, mainIn.getNumChannels());
     }
 
-    // 1) Downsample the host block to 24 kHz and queue it for analysis.
-    hostInFifo.push (buffer.getReadPointer (0), numSamples);
+    // Sidechain (instrument) -> 24 kHz -> chord detector.
+    if (getBus (true, 1) != nullptr && getBus (true, 1)->isEnabled())
     {
-        // Produce as many 24 kHz samples as the buffered host input allows,
-        // capped to the scratch size; the FIFO retains any unused remainder.
-        int wantModel = (int) std::floor (hostInFifo.size() / downsampler.getSpeedRatio()) - 1;
-        wantModel = std::min (wantModel, (int) downScratch.size());
-        if (wantModel > 0)
+        auto side = getBusBuffer (buffer, true, 1);
+        // reuse outMono as a scratch for the mono instrument
+        for (int n = 0; n < numSamples; ++n)
         {
-            const int used = downsampler.process (hostInFifo.data(), downScratch.data(), wantModel);
-            hostInFifo.consume (used);
-            inputBuffer.push (downScratch.data(), wantModel);
+            float s = 0.0f;
+            for (int ch = 0; ch < side.getNumChannels(); ++ch) s += side.getReadPointer (ch)[n];
+            outMono[(size_t) n] = s / (float) std::max (1, side.getNumChannels());
         }
+        int numOut = (int) std::floor (numSamples * detectorRate / hostRate);
+        numOut = std::min (numOut, (int) scDownScratch.size());
+        if (numOut > 0)
+        {
+            scDownsampler.process (outMono.data(), scDownScratch.data(), numOut);
+            scFifo.push (scDownScratch.data(), numOut);
+        }
+        runDetector();
     }
 
-    // 2) Run the neural chain on every complete 24 kHz analysis frame, draining
-    //    the hop-sized reconstruction into the model-rate output FIFO.
-    while (inputBuffer.pop (scratchFrame.data(), frameSize, hopSize))
-    {
-        const auto features = featureExtractor.process (scratchFrame.data(), frameSize);
-        const int produced  = neuralProcessor.processFrame (features, scratchAudio.data(),
-                                                            (int) scratchAudio.size());
-        // produced == frameSize: a windowed synthesis frame. Overlap-add it,
-        // then drain the hop's worth of finished samples to the output FIFO.
-        outputBuffer.add (scratchAudio.data(), produced);
-        const int ready = outputBuffer.read (olaScratch.data(), hopSize);
-        modelOutFifo.push (olaScratch.data(), ready);
-    }
-
-    // 3) Upsample 24 kHz output back to the host rate, filling the block exactly.
-    float* out = buffer.getWritePointer (0);
-    if (modelOutFifo.size() >= upsampler.inputSamplesNeeded (numSamples))
-    {
-        const int used = upsampler.process (modelOutFifo.data(), out, numSamples);
-        modelOutFifo.consume (used);
-    }
+    // Voice F0 over a rolling window.
+    if (numSamples >= yinWindow)
+        std::copy (voiceMono.begin() + (numSamples - yinWindow),
+                   voiceMono.begin() + numSamples, yinBuf.begin());
     else
     {
-        std::fill (out, out + numSamples, 0.0f);   // still filling initial latency
+        std::memmove (yinBuf.data(), yinBuf.data() + numSamples,
+                      sizeof (float) * (size_t) (yinWindow - numSamples));
+        std::copy (voiceMono.begin(), voiceMono.begin() + numSamples,
+                   yinBuf.begin() + (yinWindow - numSamples));
     }
+    const auto [voiceHz, conf] = voiceYin.detect (yinBuf.data(), yinWindow);
 
-    for (int ch = 1; ch < buffer.getNumChannels(); ++ch)
-        buffer.copyFrom (ch, 0, out, numSamples);
+    // Choose + smooth the pitch ratio, shift the voice.
+    const float target = (conf > 0.2f) ? chooseRatio (voiceHz, tune) : 1.0f;
+    smoothedRatio += 0.25f * (target - smoothedRatio);
+    pitchShifter.setRatio (smoothedRatio);
+    pitchShifter.process (voiceMono.data(), outMono.data(), numSamples);
 
-    // Scope tap: output ("after").
-    pushScope (scopeAfterFifo, scopeAfterBuf, out, numSamples);
-}
-
-void AdaptiveVoiceTransformProcessor::pushScope (juce::AbstractFifo& fifo,
-                                                 std::vector<float>& buf,
-                                                 const float* src, int n)
-{
-    if (buf.empty())
-        return;
-    const auto scope = fifo.write (n);
-    if (scope.blockSize1 > 0)
-        std::copy (src, src + scope.blockSize1, buf.begin() + scope.startIndex1);
-    if (scope.blockSize2 > 0)
-        std::copy (src + scope.blockSize1,
-                   src + scope.blockSize1 + scope.blockSize2, buf.begin() + scope.startIndex2);
-}
-
-int AdaptiveVoiceTransformProcessor::readScope (juce::AbstractFifo& fifo,
-                                                std::vector<float>& buf, float* dst, int maxSamples)
-{
-    if (buf.empty())
-        return 0;
-    const int n = std::min (maxSamples, fifo.getNumReady());
-    const auto scope = fifo.read (n);
-    if (scope.blockSize1 > 0)
-        std::copy (buf.begin() + scope.startIndex1,
-                   buf.begin() + scope.startIndex1 + scope.blockSize1, dst);
-    if (scope.blockSize2 > 0)
-        std::copy (buf.begin() + scope.startIndex2,
-                   buf.begin() + scope.startIndex2 + scope.blockSize2, dst + scope.blockSize1);
-    return scope.blockSize1 + scope.blockSize2;
-}
-
-int AdaptiveVoiceTransformProcessor::readScopeBefore (float* dst, int maxSamples)
-{
-    return readScope (scopeBeforeFifo, scopeBeforeBuf, dst, maxSamples);
-}
-
-int AdaptiveVoiceTransformProcessor::readScopeAfter (float* dst, int maxSamples)
-{
-    return readScope (scopeAfterFifo, scopeAfterBuf, dst, maxSamples);
+    for (int ch = 0; ch < mainOut.getNumChannels(); ++ch)
+        std::copy (outMono.begin(), outMono.begin() + numSamples, mainOut.getWritePointer (ch));
 }
 
 juce::AudioProcessorEditor* AdaptiveVoiceTransformProcessor::createEditor()
