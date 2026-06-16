@@ -56,7 +56,7 @@ NeuralChordHarmonizerProcessor::createParameterLayout()
     auto ms1 = [] (float v, int) { return String (v, 1) + " ms"; };
     layout.add (std::make_unique<AudioParameterFloat> (
         ParameterID { ParamID::attack, 1 }, "Attack",
-        NormalisableRange<float> (0.5f, 200.0f, 0.0f, 0.4f), 8.0f,    // skewed for ms feel
+        NormalisableRange<float> (0.5f, 2000.0f, 0.0f, 0.3f), 8.0f,   // up to 2 s for a slow fade-in
         AudioParameterFloatAttributes().withLabel ("ms").withStringFromValueFunction (ms1)));
     layout.add (std::make_unique<AudioParameterFloat> (
         ParameterID { ParamID::release, 1 }, "Release",

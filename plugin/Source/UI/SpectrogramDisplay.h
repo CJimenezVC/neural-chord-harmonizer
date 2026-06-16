@@ -32,14 +32,23 @@ public:
         if (! image.isValid()) return;
         const int rows = juce::jmin (n, numBins);
 
+        // Copy the column, then fill isolated dead rows. A few low-frequency
+        // semitone filters are empty (their triangle is narrower than the FFT
+        // bin spacing at 24 kHz), so those rows always read silence and would
+        // draw a constant black line. Interpolate them from their neighbours.
+        float col[128] = { 0 };
+        for (int y = 0; y < numBins; ++y) col[y] = (y < rows) ? vals[y] : kFloor;
+        for (int y = 1; y < numBins - 1; ++y)
+            if (col[y] < col[y - 1] - 3.0f && col[y] < col[y + 1] - 3.0f)
+                col[y] = 0.5f * (col[y - 1] + col[y + 1]);
+
         juce::Image::BitmapData bmp (image, juce::Image::BitmapData::readWrite);
         const int stride = bmp.pixelStride;
         for (int y = 0; y < numBins; ++y)
         {
             auto* line = bmp.getLinePointer (y);
             std::memmove (line, line + stride, (size_t) (numCols - 1) * (size_t) stride);   // scroll left
-            const float v = (y < rows) ? vals[y] : kFloor;
-            bmp.setPixelColour (numCols - 1, y, colourFor (norm (v)));
+            bmp.setPixelColour (numCols - 1, y, colourFor (norm (col[y])));
         }
         repaint();
     }
