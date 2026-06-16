@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(AdaptiveVoiceTransform VERSION 0.1.0 LANGUAGES C CXX)
+project(NeuralChordHarmonizer VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,28 +34,28 @@ endif()
 # ---------------------------------------------------------------------------
 # Plugin target
 # ---------------------------------------------------------------------------
-juce_add_plugin(AdaptiveVoiceTransform
+juce_add_plugin(NeuralChordHarmonizer
     COMPANY_NAME              "Cristobal Jimenez"
     # Explicit reverse-DNS bundle id (no spaces — JUCE warns if derived from a
     # company name containing spaces).
-    BUNDLE_ID                 com.cristobaljimenez.adaptivevoicetransform
+    BUNDLE_ID                 com.cristobaljimenez.neuralchordharmonizer
     PLUGIN_MANUFACTURER_CODE  Cjim
     PLUGIN_CODE               Avtf
     FORMATS                   VST3 AU Standalone
-    PRODUCT_NAME              "Adaptive Voice Transform"
+    PRODUCT_NAME              "Neural Chord Harmonizer"
     IS_SYNTH                  FALSE
     NEEDS_MIDI_INPUT          FALSE
     # The standalone captures live audio input; on macOS this is required or the
     # OS silently provides no input (NSMicrophoneUsageDescription + entitlement).
     MICROPHONE_PERMISSION_ENABLED TRUE
-    MICROPHONE_PERMISSION_TEXT "Adaptive Voice Transform processes microphone/line input."
+    MICROPHONE_PERMISSION_TEXT "Neural Chord Harmonizer processes microphone/line input."
     COPY_PLUGIN_AFTER_BUILD   FALSE)
 
-juce_generate_juce_header(AdaptiveVoiceTransform)
+juce_generate_juce_header(NeuralChordHarmonizer)
 
 # Chord-following harmonizer. (Voice-conversion sources from the earlier
 # direction remain in the tree but are no longer built.)
-target_sources(AdaptiveVoiceTransform PRIVATE
+target_sources(NeuralChordHarmonizer PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
 
@@ -67,14 +67,14 @@ target_sources(AdaptiveVoiceTransform PRIVATE
 
     Source/UI/LookAndFeel.cpp)
 
-target_include_directories(AdaptiveVoiceTransform PRIVATE Source)
+target_include_directories(NeuralChordHarmonizer PRIVATE Source)
 
-target_compile_definitions(AdaptiveVoiceTransform PUBLIC
+target_compile_definitions(NeuralChordHarmonizer PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0)
 
-target_link_libraries(AdaptiveVoiceTransform PRIVATE
+target_link_libraries(NeuralChordHarmonizer PRIVATE
     juce::juce_audio_utils
     juce::juce_dsp
     RTNeural

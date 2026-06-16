@@ -37,12 +37,9 @@ cmake --build build --config Release -j
 
 | Format     | Path (relative to `plugin/build`)                                 |
 | ---------- | ----------------------------------------------------------------- |
-| VST3       | `AdaptiveVoiceTransform_artefacts/Release/VST3/*.vst3`            |
-| AU         | `AdaptiveVoiceTransform_artefacts/Release/AU/*.component` (macOS) |
-| Standalone | `AdaptiveVoiceTransform_artefacts/Release/Standalone/*`           |
-
-> The CMake target and bundle ID still carry the legacy
-> `AdaptiveVoiceTransform` name; the product is the Chord Harmonizer.
+| VST3       | `NeuralChordHarmonizer_artefacts/Release/VST3/*.vst3`            |
+| AU         | `NeuralChordHarmonizer_artefacts/Release/AU/*.component` (macOS) |
+| Standalone | `NeuralChordHarmonizer_artefacts/Release/Standalone/*`           |
 
 ## Installing the model
 
@@ -75,7 +72,7 @@ In your DAW:
 auval -v aufx Avtf Avtf
 
 # pluginval (cross-platform)
-pluginval --strictness-level 8 path/to/AdaptiveVoiceTransform.vst3
+pluginval --strictness-level 8 path/to/NeuralChordHarmonizer.vst3
 ```
 
 ## Unit tests

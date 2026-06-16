@@ -1,4 +1,4 @@
-"""PyTorch model definitions for Adaptive Voice Transform.
+"""PyTorch model definitions for Neural Chord Harmonizer.
 
 Three modules trained jointly:
   - ConvEncoder:    mel-spectrogram -> compact style vector

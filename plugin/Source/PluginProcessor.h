@@ -22,11 +22,11 @@
     Detector runs at 24 kHz (its trained feature rate); the voice path runs at
     the host rate.
 */
-class AdaptiveVoiceTransformProcessor : public juce::AudioProcessor
+class NeuralChordHarmonizerProcessor : public juce::AudioProcessor
 {
 public:
-    AdaptiveVoiceTransformProcessor();
-    ~AdaptiveVoiceTransformProcessor() override;
+    NeuralChordHarmonizerProcessor();
+    ~NeuralChordHarmonizerProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -36,7 +36,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "Adaptive Voice Transform"; }
+    const juce::String getName() const override { return "Neural Chord Harmonizer"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
@@ -91,5 +91,5 @@ private:
     int   polyphony = maxVoices;              // max simultaneous detected notes
     std::atomic<int> chordMask { 0 };
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AdaptiveVoiceTransformProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NeuralChordHarmonizerProcessor)
 };

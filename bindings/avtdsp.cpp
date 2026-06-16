@@ -53,7 +53,7 @@ py::array_t<float> extract_logmel (py::array_t<float, py::array::c_style | py::a
 
 PYBIND11_MODULE (avtdsp, m)
 {
-    m.doc() = "Adaptive Voice Transform DSP — the plugin's feature extraction, for training.";
+    m.doc() = "Neural Chord Harmonizer DSP — the plugin's feature extraction, for training.";
     m.def ("extract_logmel", &extract_logmel,
            py::arg ("audio"), py::arg ("n_fft"), py::arg ("hop_length"),
            py::arg ("n_mels"), py::arg ("mel_fb"), py::arg ("sample_rate") = 24000.0,

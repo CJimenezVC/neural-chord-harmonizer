@@ -1,4 +1,4 @@
-# Adaptive Voice Transform — training configuration
+# Neural Chord Harmonizer — training configuration (legacy voice-conversion path)
 
 # Models train and run inference at 24 kHz (VCC2020's native rate). The plugin
 # resamples the host stream (e.g. 48 kHz) down to 24 kHz for inference and back

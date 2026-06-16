@@ -31,7 +31,7 @@ void PresetManager::resized()
 juce::File PresetManager::getPresetDirectory() const
 {
     auto dir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                   .getChildFile ("AdaptiveVoiceTransform")
+                   .getChildFile ("NeuralChordHarmonizer")
                    .getChildFile ("Presets");
     dir.createDirectory();
     return dir;

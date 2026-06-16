@@ -3,7 +3,7 @@
 namespace { const char* kNoteNames[12] =
     { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }; }
 
-AdaptiveVoiceTransformEditor::AdaptiveVoiceTransformEditor (AdaptiveVoiceTransformProcessor& p)
+NeuralChordHarmonizerEditor::NeuralChordHarmonizerEditor (NeuralChordHarmonizerProcessor& p)
     : AudioProcessorEditor (&p), processorRef (p)
 {
     setLookAndFeel (&lookAndFeel);
@@ -42,13 +42,13 @@ AdaptiveVoiceTransformEditor::AdaptiveVoiceTransformEditor (AdaptiveVoiceTransfo
     startTimerHz (30);
 }
 
-AdaptiveVoiceTransformEditor::~AdaptiveVoiceTransformEditor()
+NeuralChordHarmonizerEditor::~NeuralChordHarmonizerEditor()
 {
     stopTimer();
     setLookAndFeel (nullptr);
 }
 
-void AdaptiveVoiceTransformEditor::timerCallback()
+void NeuralChordHarmonizerEditor::timerCallback()
 {
     const int mask = processorRef.getChordMask();
     if (mask != chordMask)
@@ -66,12 +66,12 @@ void AdaptiveVoiceTransformEditor::timerCallback()
                            loaded ? juce::Colours::lightgreen : juce::Colours::orange);
 }
 
-void AdaptiveVoiceTransformEditor::paint (juce::Graphics& g)
+void NeuralChordHarmonizerEditor::paint (juce::Graphics& g)
 {
     g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
 }
 
-void AdaptiveVoiceTransformEditor::resized()
+void NeuralChordHarmonizerEditor::resized()
 {
     auto area = getLocalBounds().reduced (14);
     auto top = area.removeFromTop (30);
@@ -96,7 +96,7 @@ void AdaptiveVoiceTransformEditor::resized()
     }
 }
 
-void AdaptiveVoiceTransformEditor::chooseModelsFolder()
+void NeuralChordHarmonizerEditor::chooseModelsFolder()
 {
     chooser = std::make_unique<juce::FileChooser> (
         "Select the models/pretrained folder", juce::File{}, juce::String{});

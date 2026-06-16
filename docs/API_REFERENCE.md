@@ -82,7 +82,7 @@ void detect(const float* frame, int numSamples, float* pc12);
 
 ## Host Integration
 
-### `AdaptiveVoiceTransformProcessor : juce::AudioProcessor`
+### `NeuralChordHarmonizerProcessor : juce::AudioProcessor`
 Standard JUCE lifecycle (`prepareToPlay`, `processBlock`, `releaseResources`,
 APVTS state save/load). Declares a stereo main I/O plus a **sidechain** input
 bus. Reports the pitch-shifter latency via `setLatencySamples`.
@@ -98,7 +98,7 @@ Private helpers: `runDetector()` drains the sidechain FIFO and updates the held
 chord; `collectTargets(voiceHz, midiOut)` selects the strongest `Polyphony`
 chord tones near the voice and orders them lead-first.
 
-### `AdaptiveVoiceTransformEditor : juce::AudioProcessorEditor`
+### `NeuralChordHarmonizerEditor : juce::AudioProcessorEditor`
 Hosts the **Tune**, **Gate**, and **Polyphony** knobs, a live 12-note chord
 readout (polled from `getChordMask` via a `Timer`), a **Load Models...** button,
 and a model-status label. All UI strings are ASCII-only (JUCE's

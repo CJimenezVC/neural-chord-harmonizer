@@ -14,7 +14,7 @@ namespace ParamID
     constexpr auto polyphony = "polyphony";
 }
 
-AdaptiveVoiceTransformProcessor::AdaptiveVoiceTransformProcessor()
+NeuralChordHarmonizerProcessor::NeuralChordHarmonizerProcessor()
     : AudioProcessor (BusesProperties()
           .withInput  ("Input",     juce::AudioChannelSet::stereo(), true)
           .withOutput ("Output",    juce::AudioChannelSet::stereo(), true)
@@ -28,10 +28,10 @@ AdaptiveVoiceTransformProcessor::AdaptiveVoiceTransformProcessor()
     }
 }
 
-AdaptiveVoiceTransformProcessor::~AdaptiveVoiceTransformProcessor() = default;
+NeuralChordHarmonizerProcessor::~NeuralChordHarmonizerProcessor() = default;
 
 juce::AudioProcessorValueTreeState::ParameterLayout
-AdaptiveVoiceTransformProcessor::createParameterLayout()
+NeuralChordHarmonizerProcessor::createParameterLayout()
 {
     using namespace juce;
     AudioProcessorValueTreeState::ParameterLayout layout;
@@ -46,7 +46,7 @@ AdaptiveVoiceTransformProcessor::createParameterLayout()
     return layout;
 }
 
-void AdaptiveVoiceTransformProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void NeuralChordHarmonizerProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     hostRate = sampleRate;
 
@@ -73,13 +73,13 @@ void AdaptiveVoiceTransformProcessor::prepareToPlay (double sampleRate, int samp
     setLatencySamples (voices[0].getLatencySamples());
 }
 
-void AdaptiveVoiceTransformProcessor::releaseResources()
+void NeuralChordHarmonizerProcessor::releaseResources()
 {
     for (auto& v : voices) v.reset();
     scFifo.reset();
 }
 
-bool AdaptiveVoiceTransformProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool NeuralChordHarmonizerProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto& mainIn  = layouts.getMainInputChannelSet();
     const auto& mainOut = layouts.getMainOutputChannelSet();
@@ -89,7 +89,7 @@ bool AdaptiveVoiceTransformProcessor::isBusesLayoutSupported (const BusesLayout&
     return true;
 }
 
-bool AdaptiveVoiceTransformProcessor::loadModels (const juce::File& dir)
+bool NeuralChordHarmonizerProcessor::loadModels (const juce::File& dir)
 {
     suspendProcessing (true);
     const bool ok = chordDetector.load (dir.getChildFile ("chordnet.rtneural"),
@@ -98,7 +98,7 @@ bool AdaptiveVoiceTransformProcessor::loadModels (const juce::File& dir)
     return ok;
 }
 
-void AdaptiveVoiceTransformProcessor::runDetector()
+void NeuralChordHarmonizerProcessor::runDetector()
 {
     // Peak-hold-with-decay so the chord sustains (notes held) even as the
     // instrument note decays, instead of flickering.
@@ -129,7 +129,7 @@ void AdaptiveVoiceTransformProcessor::runDetector()
     }
 }
 
-int AdaptiveVoiceTransformProcessor::collectTargets (float voiceHz, int* midiOut) const
+int NeuralChordHarmonizerProcessor::collectTargets (float voiceHz, int* midiOut) const
 {
     if (voiceHz < 60.0f)
         return 0;
@@ -160,7 +160,7 @@ int AdaptiveVoiceTransformProcessor::collectTargets (float voiceHz, int* midiOut
     return n;
 }
 
-void AdaptiveVoiceTransformProcessor::processBlock (juce::AudioBuffer<float>& buffer,
+void NeuralChordHarmonizerProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                                     juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -249,19 +249,19 @@ void AdaptiveVoiceTransformProcessor::processBlock (juce::AudioBuffer<float>& bu
     }
 }
 
-juce::AudioProcessorEditor* AdaptiveVoiceTransformProcessor::createEditor()
+juce::AudioProcessorEditor* NeuralChordHarmonizerProcessor::createEditor()
 {
-    return new AdaptiveVoiceTransformEditor (*this);
+    return new NeuralChordHarmonizerEditor (*this);
 }
 
-void AdaptiveVoiceTransformProcessor::getStateInformation (juce::MemoryBlock& destData)
+void NeuralChordHarmonizerProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     if (auto state = apvts.copyState(); state.isValid())
         if (auto xml = state.createXml())
             copyXmlToBinary (*xml, destData);
 }
 
-void AdaptiveVoiceTransformProcessor::setStateInformation (const void* data, int sizeInBytes)
+void NeuralChordHarmonizerProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         apvts.replaceState (juce::ValueTree::fromXml (*xml));
@@ -269,5 +269,5 @@ void AdaptiveVoiceTransformProcessor::setStateInformation (const void* data, int
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new AdaptiveVoiceTransformProcessor();
+    return new NeuralChordHarmonizerProcessor();
 }

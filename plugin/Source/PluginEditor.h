@@ -11,12 +11,12 @@
     Harmonizer UI: a Tune knob (natural .. tight), a live readout of the
     detected chord (12 note lamps), and a model loader.
 */
-class AdaptiveVoiceTransformEditor : public juce::AudioProcessorEditor,
+class NeuralChordHarmonizerEditor : public juce::AudioProcessorEditor,
                                      private juce::Timer
 {
 public:
-    explicit AdaptiveVoiceTransformEditor (AdaptiveVoiceTransformProcessor&);
-    ~AdaptiveVoiceTransformEditor() override;
+    explicit NeuralChordHarmonizerEditor (NeuralChordHarmonizerProcessor&);
+    ~NeuralChordHarmonizerEditor() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -27,7 +27,7 @@ private:
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
 
-    AdaptiveVoiceTransformProcessor& processorRef;
+    NeuralChordHarmonizerProcessor& processorRef;
     AvtLookAndFeel lookAndFeel;
 
     juce::Slider tuneKnob, gateKnob, polyKnob;
@@ -39,5 +39,5 @@ private:
 
     int chordMask = 0;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AdaptiveVoiceTransformEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NeuralChordHarmonizerEditor)
 };

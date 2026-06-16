@@ -12,4 +12,4 @@ JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 cmake -B build -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
 cmake --build build --config "$BUILD_TYPE" -j "$JOBS"
 
-echo "==> Artefacts under plugin/build/AdaptiveVoiceTransform_artefacts/$BUILD_TYPE/"
+echo "==> Artefacts under plugin/build/NeuralChordHarmonizer_artefacts/$BUILD_TYPE/"
