@@ -40,7 +40,7 @@ void AdaptiveVoiceTransformProcessor::prepareToPlay (double sampleRate, int samp
 {
     hostRate = sampleRate;
 
-    pitchShifter.prepare (1024, 256);
+    for (auto& v : voices) v.prepare (1024, 256);
     voiceYin.prepare (hostRate, yinWindow);
     scDownsampler.prepare (hostRate, detectorRate);   // ratio = host/24k
 
@@ -53,18 +53,19 @@ void AdaptiveVoiceTransformProcessor::prepareToPlay (double sampleRate, int samp
     scDownScratch.assign ((size_t) std::max (maxScOut, 64), 0.0f);
 
     voiceMono.assign ((size_t) samplesPerBlock, 0.0f);
-    outMono.assign ((size_t) samplesPerBlock, 0.0f);
+    voiceOut.assign  ((size_t) samplesPerBlock, 0.0f);
+    mixBuf.assign    ((size_t) samplesPerBlock, 0.0f);
     yinBuf.assign ((size_t) yinWindow, 0.0f);
     yinFill = 0;
 
-    std::fill (std::begin (chordSmoothed), std::end (chordSmoothed), 0.0f);
-    smoothedRatio = 1.0f;
-    setLatencySamples (pitchShifter.getLatencySamples());
+    std::fill (std::begin (chordHeld), std::end (chordHeld), 0.0f);
+    for (auto& r : voiceRatio) r = 1.0f;
+    setLatencySamples (voices[0].getLatencySamples());
 }
 
 void AdaptiveVoiceTransformProcessor::releaseResources()
 {
-    pitchShifter.reset();
+    for (auto& v : voices) v.reset();
     scFifo.reset();
 }
 
@@ -89,6 +90,9 @@ bool AdaptiveVoiceTransformProcessor::loadModels (const juce::File& dir)
 
 void AdaptiveVoiceTransformProcessor::runDetector()
 {
+    // Peak-hold-with-decay so the chord sustains (notes held) even as the
+    // instrument note decays, instead of flickering.
+    constexpr float decay = 0.97f;          // per detector hop (~21 ms @ 24k)
     while (scFifo.size() >= detectorFft)
     {
         std::copy (scFifo.data(), scFifo.data() + detectorFft, detectFrame.begin());
@@ -96,34 +100,35 @@ void AdaptiveVoiceTransformProcessor::runDetector()
         int mask = 0;
         for (int i = 0; i < 12; ++i)
         {
-            chordSmoothed[i] = 0.7f * chordSmoothed[i] + 0.3f * pcAct[(size_t) i];
-            if (chordSmoothed[i] > 0.5f) mask |= (1 << i);
+            chordHeld[i] = std::max (decay * chordHeld[i], pcAct[(size_t) i]);
+            if (chordHeld[i] > 0.5f) mask |= (1 << i);
         }
         chordMask.store (mask);
         scFifo.consume (detectorHop);
     }
 }
 
-float AdaptiveVoiceTransformProcessor::chooseRatio (float voiceHz, float tune) const
+int AdaptiveVoiceTransformProcessor::collectTargets (float voiceHz, int* midiOut) const
 {
     if (voiceHz < 60.0f)
-        return 1.0f;
+        return 0;
     const float vMidi = 69.0f + 12.0f * std::log2 (voiceHz / 440.0f);
 
-    int best = -1;
-    float bestDist = 1.0e9f;
-    for (int m = chordDetector.getMidiLo(); m <= chordDetector.getMidiHi(); ++m)
+    // One target per active pitch class, placed at the octave nearest the voice,
+    // then ordered by distance to the voice (lead first).
+    int n = 0;
+    for (int pc = 0; pc < 12 && n < maxVoices; ++pc)
     {
-        if (chordSmoothed[m % 12] <= 0.5f) continue;
-        const float d = std::abs ((float) m - vMidi);
-        if (d < bestDist) { bestDist = d; best = m; }
+        if (chordHeld[pc] <= 0.5f) continue;
+        int m = pc + 12 * (int) std::lround ((vMidi - pc) / 12.0);
+        m = std::clamp (m, chordDetector.getMidiLo(), chordDetector.getMidiHi());
+        midiOut[n++] = m;
     }
-    if (best < 0)
-        return 1.0f;
-
-    const float targetHz = 440.0f * std::pow (2.0f, (best - 69) / 12.0f);
-    const float full = targetHz / voiceHz;
-    return std::pow (full, tune);          // tune 0 = no shift, 1 = full snap
+    for (int i = 0; i < n; ++i)
+        for (int j = i + 1; j < n; ++j)
+            if (std::abs (midiOut[j] - vMidi) < std::abs (midiOut[i] - vMidi))
+                std::swap (midiOut[i], midiOut[j]);
+    return n;
 }
 
 void AdaptiveVoiceTransformProcessor::processBlock (juce::AudioBuffer<float>& buffer,
@@ -148,18 +153,18 @@ void AdaptiveVoiceTransformProcessor::processBlock (juce::AudioBuffer<float>& bu
     if (getBus (true, 1) != nullptr && getBus (true, 1)->isEnabled())
     {
         auto side = getBusBuffer (buffer, true, 1);
-        // reuse outMono as a scratch for the mono instrument
+        // voiceOut is free here (the voice loop overwrites it later) -> mono scratch.
         for (int n = 0; n < numSamples; ++n)
         {
             float s = 0.0f;
             for (int ch = 0; ch < side.getNumChannels(); ++ch) s += side.getReadPointer (ch)[n];
-            outMono[(size_t) n] = s / (float) std::max (1, side.getNumChannels());
+            voiceOut[(size_t) n] = s / (float) std::max (1, side.getNumChannels());
         }
         int numOut = (int) std::floor (numSamples * detectorRate / hostRate);
         numOut = std::min (numOut, (int) scDownScratch.size());
         if (numOut > 0)
         {
-            scDownsampler.process (outMono.data(), scDownScratch.data(), numOut);
+            scDownsampler.process (voiceOut.data(), scDownScratch.data(), numOut);
             scFifo.push (scDownScratch.data(), numOut);
         }
         runDetector();
@@ -178,14 +183,39 @@ void AdaptiveVoiceTransformProcessor::processBlock (juce::AudioBuffer<float>& bu
     }
     const auto [voiceHz, conf] = voiceYin.detect (yinBuf.data(), yinWindow);
 
-    // Choose + smooth the pitch ratio, shift the voice.
-    const float target = (conf > 0.2f) ? chooseRatio (voiceHz, tune) : 1.0f;
-    smoothedRatio += 0.25f * (target - smoothedRatio);
-    pitchShifter.setRatio (smoothedRatio);
-    pitchShifter.process (voiceMono.data(), outMono.data(), numSamples);
+    // Choir: one pitch-shifted voice per detected chord tone, summed.
+    int targets[maxVoices];
+    const int nTargets = (conf > 0.2f) ? collectTargets (voiceHz, targets) : 0;
 
+    std::fill (mixBuf.begin(), mixBuf.begin() + numSamples, 0.0f);
+    int nMixed = 0;
+    for (int v = 0; v < maxVoices; ++v)
+    {
+        const bool active = (v < nTargets) && (voiceHz >= 60.0f);
+        float rTarget = 1.0f;
+        if (active)
+        {
+            const float targetHz = 440.0f * std::pow (2.0f, (float) (targets[v] - 69) / 12.0f);
+            rTarget = std::pow (targetHz / voiceHz, tune);   // tune: 0 = dry .. 1 = full chord
+        }
+        voiceRatio[v] += 0.25f * (rTarget - voiceRatio[v]);  // smooth (glide)
+        voices[v].setRatio (voiceRatio[v]);
+        voices[v].process (voiceMono.data(), voiceOut.data(), numSamples);
+
+        if (active)
+        {
+            for (int n = 0; n < numSamples; ++n) mixBuf[(size_t) n] += voiceOut[(size_t) n];
+            ++nMixed;
+        }
+    }
+    // No detected chord (or unvoiced) -> mixBuf stays zero -> output is silent.
+
+    const float norm = nMixed > 1 ? 1.0f / std::sqrt ((float) nMixed) : 1.0f;
     for (int ch = 0; ch < mainOut.getNumChannels(); ++ch)
-        std::copy (outMono.begin(), outMono.begin() + numSamples, mainOut.getWritePointer (ch));
+    {
+        auto* o = mainOut.getWritePointer (ch);
+        for (int n = 0; n < numSamples; ++n) o[n] = mixBuf[(size_t) n] * norm;
+    }
 }
 
 juce::AudioProcessorEditor* AdaptiveVoiceTransformProcessor::createEditor()

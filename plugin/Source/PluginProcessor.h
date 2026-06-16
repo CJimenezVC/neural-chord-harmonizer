@@ -59,14 +59,16 @@ public:
     int getChordMask() const noexcept { return chordMask.load(); }
 
 private:
+    static constexpr int maxVoices = 5;       // lead + up to 4 harmony voices
+
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
-    void runDetector();                       // drains scFifo, updates chordMask
-    float chooseRatio (float voiceHz, float tune) const;
+    void runDetector();                       // drains scFifo, updates chord (held)
+    int  collectTargets (float voiceHz, int* midiOut) const;   // chord tones near the voice
 
     juce::AudioProcessorValueTreeState apvts;
 
     ChordDetector     chordDetector;
-    PitchShifter      pitchShifter;
+    PitchShifter      voices[maxVoices];      // one per harmony voice
     YINPitchDetector  voiceYin;
     Resampler         scDownsampler;          // sidechain host rate -> 24 kHz
 
@@ -79,12 +81,12 @@ private:
     std::vector<float> detectFrame;           // one detector frame (24 kHz)
     std::vector<float> pcAct;                 // 12 activations
 
-    std::vector<float> voiceMono, outMono;    // per-block scratch (host rate)
+    std::vector<float> voiceMono, voiceOut, mixBuf;   // per-block scratch (host rate)
     std::vector<float> yinBuf;                // rolling voice window for F0
     int yinWindow = 2048, yinFill = 0;
 
-    float chordSmoothed[12] = { 0 };
-    float smoothedRatio = 1.0f;
+    float chordHeld[12] = { 0 };              // peak-hold-with-decay chord state
+    float voiceRatio[maxVoices] = { 0 };      // smoothed per-voice pitch ratio
     std::atomic<int> chordMask { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AdaptiveVoiceTransformProcessor)

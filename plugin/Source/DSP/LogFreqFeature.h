@@ -46,9 +46,16 @@ public:
     void compute (const float* frame, int numSamples, float* out)
     {
         const int n = std::min (numSamples, fftSize);
+        // Level-invariant: normalize to unit RMS so detection works at any input
+        // gain (matches chord_synth.py:frame_feature).
+        float ms = 0.0f;
+        for (int i = 0; i < n; ++i) ms += frame[i] * frame[i];
+        const float rms = std::sqrt (ms / (float) std::max (1, n));
+        const float scale = rms > 1.0e-4f ? 1.0f / rms : 1.0f;
+
         std::fill (re.begin(), re.end(), 0.0f);
         std::fill (im.begin(), im.end(), 0.0f);
-        for (int i = 0; i < n; ++i) re[(size_t) i] = frame[i] * window[(size_t) i];
+        for (int i = 0; i < n; ++i) re[(size_t) i] = frame[i] * scale * window[(size_t) i];
         fft.transform (re.data(), im.data(), false);
         for (int k = 0; k < numBins; ++k)
             mag[(size_t) k] = std::sqrt (re[(size_t) k] * re[(size_t) k]

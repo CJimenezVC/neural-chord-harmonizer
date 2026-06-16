@@ -60,21 +60,33 @@ _WIN = np.hanning(N_FFT).astype(np.float32)
 
 
 def synth_frame(midi_notes, sr: int = SR, n_fft: int = N_FFT) -> np.ndarray:
-    """Additive synth of one analysis frame for a set of MIDI notes."""
+    """Additive synth of one analysis frame for a set of MIDI notes.
+
+    Randomizes per-note gain, harmonic roll-off and a random overall level so
+    the detector is robust to real-instrument timbre and (with the level-
+    invariant feature) to playing level.
+    """
     t = np.arange(n_fft) / sr
     sig = np.zeros(n_fft, np.float32)
+    rolloff = np.random.uniform(0.7, 1.6)                # harmonic decay exponent
     for m in midi_notes:
         f0 = float(midi_to_hz(m))
-        n_harm = max(1, int(min(8, (sr / 2) / f0)))      # harmonics under Nyquist
-        amp = np.random.uniform(0.6, 1.0)
+        n_harm = max(1, int(min(10, (sr / 2) / f0)))     # harmonics under Nyquist
+        amp = np.random.uniform(0.4, 1.0)
         phase = np.random.uniform(0, 2 * np.pi)
         for h in range(1, n_harm + 1):
-            sig += (amp / h) * np.sin(2 * np.pi * f0 * h * t + phase)
-    sig += np.random.normal(0, 0.01, n_fft).astype(np.float32)   # a little noise
+            sig += (amp / (h ** rolloff)) * np.sin(2 * np.pi * f0 * h * t + phase)
+    sig += np.random.normal(0, 0.01, n_fft).astype(np.float32)
+    sig *= np.float32(10.0 ** np.random.uniform(-1.5, 0.5))   # random level (the feature normalizes it out)
     return sig
 
 
 def frame_feature(sig: np.ndarray) -> np.ndarray:
+    # Level-invariant: normalize to unit RMS so detection works at any input
+    # gain (real guitar at normal levels, not just clipping-loud).
+    rms = float(np.sqrt(np.mean(sig ** 2)))
+    if rms > 1e-4:
+        sig = sig / rms
     mag = np.abs(np.fft.rfft(sig * _WIN))
     return np.log(_FB @ mag + 1e-6).astype(np.float32)           # [N_PITCH]
 
