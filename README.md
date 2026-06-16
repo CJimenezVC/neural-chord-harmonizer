@@ -12,6 +12,12 @@ the *singing* half: a bank of formant-preserving phase-vocoder pitch shifters
 re-voices the singer onto those notes. A single **Tune** control sweeps from
 natural harmony to hard-snap (T-Pain) auto-tune.
 
+> **Built for showcase / research purposes.** This is a demonstration of
+> real-time DSP + on-device ML in an audio plugin, not a polished commercial
+> product. Expect rough edges, opinionated defaults, and APIs/quality that may
+> change. It's meant to explore and show the technique, not to ship in
+> production.
+
 ## Features
 
 - Real-time, chord-following vocal harmony driven by a sidechain instrument
