@@ -142,7 +142,7 @@ normalized (`1/√N`). No chord (or unvoiced input) → silent output.
 
 | Parameter   | Range          | Effect                                            |
 | ----------- | -------------- | ------------------------------------------------- |
-| `Tune`      | 0 – 1          | Natural blend → tight snap (T-Pain)               |
+| `Tune`      | 0 – 1          | Natural blend → tight snap (hard auto-tune)       |
 | `Gate`      | −80 – −10 dB   | Instrument RMS threshold for the detector         |
 | `Polyphony` | 1 – 6          | Max simultaneous harmony voices (e.g. 6 = guitar) |
 

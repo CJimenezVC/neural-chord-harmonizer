@@ -10,7 +10,7 @@ The neural network is the *listening* half: it transcribes whatever the
 instrument is playing into 12 pitch-class activations in real time. The DSP is
 the *singing* half: a bank of formant-preserving phase-vocoder pitch shifters
 re-voices the singer onto those notes. A single **Tune** control sweeps from
-natural harmony to hard-snap (T-Pain) auto-tune.
+natural harmony to hard-snap auto-tune.
 
 > **Built for showcase / research purposes.** This is a demonstration of
 > real-time DSP + on-device ML in an audio plugin, not a polished commercial

@@ -17,7 +17,7 @@
     A sidechain instrument (guitar/bass/piano) drives a neural polyphonic
     pitch-class detector; the main voice input is pitch-shifted (formant-
     preserving) to the nearest tone of the detected chord. The "Tune" control
-    sweeps from natural (gentle) to tight (hard-snap / T-Pain).
+    sweeps from natural (gentle) to tight (hard-snap auto-tune).
 
     Detector runs at 24 kHz (its trained feature rate); the voice path runs at
     the host rate.
