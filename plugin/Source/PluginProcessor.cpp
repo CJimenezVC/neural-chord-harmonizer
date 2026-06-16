@@ -80,7 +80,21 @@ void NeuralChordHarmonizerProcessor::prepareToPlay (double sampleRate, int sampl
 
     std::fill (std::begin (chordHeld), std::end (chordHeld), 0.0f);
     for (auto& r : voiceRatio) r = 1.0f;
+
+    specRing.assign ((size_t) kSpecBins * kSpecCols, kSpecFloor);
+    specWrite.store (0, std::memory_order_release);
+
     setLatencySamples (voices[0].getLatencySamples());
+}
+
+void NeuralChordHarmonizerProcessor::pushSpectrumColumn (const float* bins, int n) noexcept
+{
+    const uint32_t w = specWrite.load (std::memory_order_relaxed);
+    float* dst = &specRing[(size_t) (w % kSpecCols) * kSpecBins];
+    const int m = std::min (n, kSpecBins);
+    for (int i = 0; i < m; ++i)      dst[i] = bins[i];
+    for (int i = m; i < kSpecBins; ++i) dst[i] = kSpecFloor;
+    specWrite.store (w + 1, std::memory_order_release);
 }
 
 void NeuralChordHarmonizerProcessor::releaseResources()
@@ -124,9 +138,15 @@ void NeuralChordHarmonizerProcessor::runDetector()
         const bool open = std::sqrt (ms / (float) detectorFft) >= gateLinear;
 
         if (open)
+        {
             chordDetector.detect (detectFrame.data(), detectorFft, pcAct.data());
+            pushSpectrumColumn (chordDetector.lastFeature().data(), chordDetector.getNumPitch());
+        }
         else
+        {
             std::fill (pcAct.begin(), pcAct.end(), 0.0f);   // gated -> chord decays away
+            pushSpectrumColumn (nullptr, 0);                // silence column (floor)
+        }
 
         int mask = 0;
         for (int i = 0; i < 12; ++i)

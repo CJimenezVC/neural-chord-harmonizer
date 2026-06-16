@@ -6,10 +6,12 @@
 
 #include "PluginProcessor.h"
 #include "UI/LookAndFeel.h"
+#include "UI/SpectrogramDisplay.h"
 
 /**
-    Harmonizer UI: Tune / Gate / Polyphony knobs, a live readout of the
-    detected chord (12 note lamps), and a model loader.
+    Harmonizer UI: a scrolling colour spectrogram with live chord highlighting,
+    Tune / Gate / Polyphony knobs, a readout of the detected chord, and a model
+    loader.
 */
 class NeuralChordHarmonizerEditor : public juce::AudioProcessorEditor,
                                      private juce::Timer
@@ -36,6 +38,9 @@ private:
 
     juce::TextButton loadButton { "Load Models..." };
     std::unique_ptr<juce::FileChooser> chooser;
+
+    SpectrogramDisplay spectrogram;
+    uint32_t lastSpecRead = 0;
 
     int chordMask = 0;
 

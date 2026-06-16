@@ -60,8 +60,24 @@ public:
     /** 12-bit mask of currently-detected pitch classes (for the editor). */
     int getChordMask() const noexcept { return chordMask.load(); }
 
+    // --- Spectrogram feed for the editor (lock-free SPSC ring of feature columns) ---
+    static constexpr int   kSpecBins  = 61;   // one log-freq bin per semitone (MIDI 36..96)
+    static constexpr int   kSpecCols  = 512;  // history depth
+    static constexpr float kSpecFloor = -16.0f;   // log-magnitude value used for silence
+    int      getSpectrumBins() const noexcept     { return kSpecBins; }
+    int      getSpectrumCapacity() const noexcept { return kSpecCols; }
+    uint32_t getSpectrumWriteIndex() const noexcept { return specWrite.load (std::memory_order_acquire); }
+    /** Copy column @p idx (kSpecBins floats) into @p dst. */
+    void readSpectrumColumn (uint32_t idx, float* dst) const noexcept
+    {
+        const float* src = &specRing[(size_t) (idx % kSpecCols) * kSpecBins];
+        std::copy (src, src + kSpecBins, dst);
+    }
+
 private:
     static constexpr int maxVoices = 6;       // up to 6 chord tones (e.g. a guitar chord)
+
+    void pushSpectrumColumn (const float* bins, int n) noexcept;
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     void runDetector();                       // drains scFifo, updates chord (held)
@@ -92,6 +108,9 @@ private:
     float gateLinear = 0.0f;                  // instrument noise-gate threshold (RMS)
     int   polyphony = maxVoices;              // max simultaneous detected notes
     std::atomic<int> chordMask { 0 };
+
+    std::vector<float>    specRing;           // kSpecCols * kSpecBins feature history
+    std::atomic<uint32_t> specWrite { 0 };    // monotonically increasing column index
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NeuralChordHarmonizerProcessor)
 };

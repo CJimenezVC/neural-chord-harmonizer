@@ -28,7 +28,14 @@ NeuralChordHarmonizerEditor::NeuralChordHarmonizerEditor (NeuralChordHarmonizerP
     setupKnob (gateKnob, gateLabel, "Gate",      "gate",      gateAttachment);
     setupKnob (polyKnob, polyLabel, "Polyphony", "polyphony", polyAttachment);
 
+    addAndMakeVisible (spectrogram);
+    spectrogram.configure (processorRef.getSpectrumBins(),
+                           processorRef.getSpectrumCapacity(), /*midiLo*/ 36);
+    lastSpecRead = processorRef.getSpectrumWriteIndex();
+
     chordLabel.setJustificationType (juce::Justification::centred);
+    chordLabel.setText ("(listening)", juce::dontSendNotification);
+    chordLabel.setColour (juce::Label::textColourId, juce::Colours::grey);
     addAndMakeVisible (chordLabel);
 
     addAndMakeVisible (loadButton);
@@ -36,7 +43,7 @@ NeuralChordHarmonizerEditor::NeuralChordHarmonizerEditor (NeuralChordHarmonizerP
     statusLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (statusLabel);
 
-    setSize (480, 290);
+    setSize (600, 470);
     startTimerHz (30);
 }
 
@@ -48,15 +55,32 @@ NeuralChordHarmonizerEditor::~NeuralChordHarmonizerEditor()
 
 void NeuralChordHarmonizerEditor::timerCallback()
 {
+    // Drain any new spectrogram columns the audio thread has produced.
+    const uint32_t w   = processorRef.getSpectrumWriteIndex();
+    const int      cap = processorRef.getSpectrumCapacity();
+    const int      bins = processorRef.getSpectrumBins();
+    uint32_t from = lastSpecRead;
+    if (w - from > (uint32_t) cap) from = w - (uint32_t) cap;   // we fell behind: skip ahead
+    float col[64];
+    for (uint32_t i = from; i != w; ++i)
+    {
+        processorRef.readSpectrumColumn (i, col);
+        spectrogram.pushColumn (col, bins);
+    }
+    lastSpecRead = w;
+
     const int mask = processorRef.getChordMask();
+    spectrogram.setChordMask (mask);
     if (mask != chordMask)
     {
         chordMask = mask;
         juce::StringArray notes;
         for (int i = 0; i < 12; ++i)
             if (mask & (1 << i)) notes.add (kNoteNames[i]);
-        chordLabel.setText (notes.isEmpty() ? "(listening)" : notes.joinIntoString (" "),
+        chordLabel.setText (notes.isEmpty() ? "(listening)" : notes.joinIntoString ("  "),
                             juce::dontSendNotification);
+        chordLabel.setColour (juce::Label::textColourId,
+                              mask ? juce::Colour (0xff2dffb0) : juce::Colours::grey);
     }
     const bool loaded = processorRef.modelsLoaded();
     statusLabel.setText (loaded ? "Models: loaded" : "Models: none", juce::dontSendNotification);
@@ -77,12 +101,20 @@ void NeuralChordHarmonizerEditor::resized()
     loadButton.setBounds (top.removeFromRight (110).reduced (0, 2));
     statusLabel.setBounds (top.removeFromRight (130));
 
-    area.removeFromTop (8);
-    chordLabel.setBounds (area.removeFromTop (40));
-    chordLabel.setFont (juce::Font (22.0f, juce::Font::bold));
+    // Knobs at the bottom.
+    auto labelRow = area.removeFromBottom (20);
+    auto knobRow  = area.removeFromBottom (140);
+    area.removeFromBottom (6);
 
-    auto knobRow = area.removeFromTop (150);
-    auto labelRow = area.removeFromTop (20);
+    // Chord readout just above the knobs.
+    chordLabel.setBounds (area.removeFromBottom (28));
+    chordLabel.setFont (juce::Font (20.0f, juce::Font::bold));
+    area.removeFromBottom (8);
+
+    // Spectrogram fills the remaining (largest) area.
+    area.removeFromTop (8);
+    spectrogram.setBounds (area);
+
     const int colW = knobRow.getWidth() / 3;
     juce::Slider* knobs[3]  = { &tuneKnob,  &gateKnob,  &polyKnob };
     juce::Label*  labels[3] = { &tuneLabel, &gateLabel, &polyLabel };

@@ -26,6 +26,10 @@ public:
     /** Detect on one frame (getFftSize() samples) -> 12 activations. */
     void detect (const float* frame, int numSamples, float* pc12);
 
+    /** The most recent log-frequency feature (one bin per semitone), for display. */
+    const std::vector<float>& lastFeature() const noexcept { return featBuf; }
+    int getNumPitch() const noexcept { return (int) featBuf.size(); }
+
 private:
     LogFreqFeature feature;
     NNModel net;

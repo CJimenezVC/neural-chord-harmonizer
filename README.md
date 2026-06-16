@@ -25,6 +25,7 @@ natural harmony to hard-snap auto-tune.
 - Formant-preserving phase-vocoder pitch shifting (the voice stays the voice)
 - **Choir** mode: one harmony voice per detected chord tone (up to 6)
 - **Tune** (natural → tight), **Gate** (instrument noise gate), **Polyphony** (1–6)
+- Live **colour spectrogram** of the detector feed, with detected chord tones highlighted and a glowing chord indicator
 - VST3 / AU / Standalone for DAW integration
 
 ## Architecture at a Glance

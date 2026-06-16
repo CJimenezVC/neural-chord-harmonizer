@@ -12,7 +12,7 @@ JUCE and RTNeural are fetched automatically (see `../docs/PLUGIN_BUILD.md`).
 ```
 Source/
 ├── PluginProcessor.{h,cpp}   # AudioProcessor: detector + voice paths + APVTS
-├── PluginEditor.{h,cpp}      # UI: Tune/Gate/Polyphony knobs, chord readout, model loader
+├── PluginEditor.{h,cpp}      # UI: colour spectrogram + chord highlight, Tune/Gate/Polyphony knobs, model loader
 ├── DSP/
 │   ├── LogFreqFeature.h      # 61-bin log-frequency detector feature (level-invariant)
 │   ├── PitchShifter.h        # formant-preserving phase-vocoder pitch shift
@@ -23,7 +23,7 @@ Source/
 ├── ML/
 │   ├── ChordDetector.*       # LogFreqFeature + NNModel → 12 pitch classes
 │   └── NNModel.* / NNMath.h  # self-contained dense/relu/sigmoid inference
-└── UI/                       # look & feel
+└── UI/                       # SpectrogramDisplay (scrolling colour + chord highlight), look & feel
 
 Tests/                        # JUCE-free unit tests (FFT, FIFO, OLA, NN math)
 ```
