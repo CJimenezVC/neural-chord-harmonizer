@@ -105,13 +105,17 @@ def main() -> None:
     net.load_state_dict(torch.load(pt + "/chordnet.pt", map_location="cpu"))
     midis = np.arange(cs.MIDI_LO, cs.MIDI_HI + 1)
 
-    # Instrument: C - G - Am - F
-    prog = [(0, "maj"), (7, "maj"), (9, "min"), (5, "maj")]
-    instr = synth_progression(prog, dur=1.2)
-
     voice = args.voice or sorted(glob.glob("../data/datasets/vcc2020/source/SEF1/*.wav"))[0]
     v, _ = librosa.load(voice, sr=SR, mono=True)
-    v = np.tile(v, int(np.ceil(len(instr) / len(v))))[:len(instr)]   # match length
+    v = v / (np.abs(v).max() + 1e-9) * 0.9                           # normalize input
+
+    # Instrument: loop C - G - Am - F to cover the full vocal.
+    base = [(0, "maj"), (7, "maj"), (9, "min"), (5, "maj")]
+    dur = 1.5
+    n_chords = int(np.ceil(len(v) / (SR * dur)))
+    prog = [base[i % len(base)] for i in range(n_chords)]
+    instr_raw = synth_progression(prog, dur=dur)[:len(v)]            # loud, for detection
+    instr = 0.7 * instr_raw / (np.abs(instr_raw).max() + 1e-9)       # normalized, for audio
 
     hop = 256
     n = 1 + (len(v) - cs.N_FFT) // hop
@@ -124,8 +128,8 @@ def main() -> None:
     voiced = 0
     for i in range(n):
         s = i * hop
-        # detect chord pitch classes from the instrument frame
-        feat = cs.frame_feature(instr[s:s + cs.N_FFT])
+        # detect chord pitch classes from the (loud) instrument frame
+        feat = cs.frame_feature(instr_raw[s:s + cs.N_FFT])
         with torch.no_grad():
             act = torch.sigmoid(net(torch.from_numpy(feat))).numpy()
         pcs = np.where(act > 0.5)[0]
@@ -143,9 +147,13 @@ def main() -> None:
 
     tuned = pitch_shift(v, ratios, n_fft=cs.N_FFT, hop=hop)
 
+    def norm(a, peak=0.9):
+        return (peak * a / (np.abs(a).max() + 1e-9)).astype(np.float32)
+
+    tuned = norm(tuned)
     sf.write(args.out, tuned, SR)
     sf.write(args.out.replace(".wav", "_mix.wav"),
-             0.8 * tuned + 0.5 * instr[:len(tuned)], SR)
+             norm(0.85 * tuned + 0.5 * instr[:len(tuned)]), SR)
     sf.write(args.out.replace(".wav", "_instrument.wav"), instr, SR)
 
     # Verify: F0 of the tuned voice should sit on chord tones.

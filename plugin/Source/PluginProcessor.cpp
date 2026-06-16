@@ -7,7 +7,12 @@
 
 #include "PluginEditor.h"
 
-namespace ParamID { constexpr auto tune = "tune"; }
+namespace ParamID
+{
+    constexpr auto tune      = "tune";
+    constexpr auto gate      = "gate";
+    constexpr auto polyphony = "polyphony";
+}
 
 AdaptiveVoiceTransformProcessor::AdaptiveVoiceTransformProcessor()
     : AudioProcessor (BusesProperties()
@@ -33,6 +38,11 @@ AdaptiveVoiceTransformProcessor::createParameterLayout()
     layout.add (std::make_unique<AudioParameterFloat> (
         ParameterID { ParamID::tune, 1 }, "Tune",
         NormalisableRange<float> (0.0f, 1.0f), 0.7f));   // natural .. tight
+    layout.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { ParamID::gate, 1 }, "Gate",
+        NormalisableRange<float> (-80.0f, -10.0f), -45.0f, "dB"));   // instrument noise gate
+    layout.add (std::make_unique<AudioParameterInt> (
+        ParameterID { ParamID::polyphony, 1 }, "Polyphony", 1, maxVoices, 4));
     return layout;
 }
 
@@ -96,7 +106,18 @@ void AdaptiveVoiceTransformProcessor::runDetector()
     while (scFifo.size() >= detectorFft)
     {
         std::copy (scFifo.data(), scFifo.data() + detectorFft, detectFrame.begin());
-        chordDetector.detect (detectFrame.data(), detectorFft, pcAct.data());
+
+        // Noise gate: only detect when the instrument is actually above the gate
+        // (the level-invariant feature would otherwise read notes out of noise).
+        float ms = 0.0f;
+        for (int i = 0; i < detectorFft; ++i) ms += detectFrame[(size_t) i] * detectFrame[(size_t) i];
+        const bool open = std::sqrt (ms / (float) detectorFft) >= gateLinear;
+
+        if (open)
+            chordDetector.detect (detectFrame.data(), detectorFft, pcAct.data());
+        else
+            std::fill (pcAct.begin(), pcAct.end(), 0.0f);   // gated -> chord decays away
+
         int mask = 0;
         for (int i = 0; i < 12; ++i)
         {
@@ -114,16 +135,24 @@ int AdaptiveVoiceTransformProcessor::collectTargets (float voiceHz, int* midiOut
         return 0;
     const float vMidi = 69.0f + 12.0f * std::log2 (voiceHz / 440.0f);
 
-    // One target per active pitch class, placed at the octave nearest the voice,
-    // then ordered by distance to the voice (lead first).
-    int n = 0;
-    for (int pc = 0; pc < 12 && n < maxVoices; ++pc)
+    // Gather active pitch classes with their strength, keep the strongest up to
+    // the Polyphony limit (e.g. a 6-note guitar chord).
+    int   pcs[12];
+    float str[12];
+    int nc = 0;
+    for (int pc = 0; pc < 12; ++pc)
+        if (chordHeld[pc] > 0.5f) { pcs[nc] = pc; str[nc] = chordHeld[pc]; ++nc; }
+    for (int i = 0; i < nc; ++i)
+        for (int j = i + 1; j < nc; ++j)
+            if (str[j] > str[i]) { std::swap (str[i], str[j]); std::swap (pcs[i], pcs[j]); }
+
+    const int n = std::min ({ nc, polyphony, maxVoices });
+    for (int i = 0; i < n; ++i)
     {
-        if (chordHeld[pc] <= 0.5f) continue;
-        int m = pc + 12 * (int) std::lround ((vMidi - pc) / 12.0);
-        m = std::clamp (m, chordDetector.getMidiLo(), chordDetector.getMidiHi());
-        midiOut[n++] = m;
+        int m = pcs[i] + 12 * (int) std::lround ((vMidi - pcs[i]) / 12.0);
+        midiOut[i] = std::clamp (m, chordDetector.getMidiLo(), chordDetector.getMidiHi());
     }
+    // Order by distance to the voice (lead first).
     for (int i = 0; i < n; ++i)
         for (int j = i + 1; j < n; ++j)
             if (std::abs (midiOut[j] - vMidi) < std::abs (midiOut[i] - vMidi))
@@ -137,6 +166,8 @@ void AdaptiveVoiceTransformProcessor::processBlock (juce::AudioBuffer<float>& bu
     juce::ScopedNoDenormals noDenormals;
     const int numSamples = buffer.getNumSamples();
     const float tune = apvts.getRawParameterValue (ParamID::tune)->load();
+    gateLinear = std::pow (10.0f, apvts.getRawParameterValue (ParamID::gate)->load() / 20.0f);
+    polyphony  = (int) apvts.getRawParameterValue (ParamID::polyphony)->load();
 
     auto mainIn  = getBusBuffer (buffer, true, 0);
     auto mainOut = getBusBuffer (buffer, false, 0);

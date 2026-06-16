@@ -30,9 +30,9 @@ private:
     AdaptiveVoiceTransformProcessor& processorRef;
     AvtLookAndFeel lookAndFeel;
 
-    juce::Slider tuneKnob;
-    juce::Label  tuneLabel, titleLabel, chordLabel, statusLabel;
-    std::unique_ptr<SliderAttachment> tuneAttachment;
+    juce::Slider tuneKnob, gateKnob, polyKnob;
+    juce::Label  tuneLabel, gateLabel, polyLabel, titleLabel, chordLabel, statusLabel;
+    std::unique_ptr<SliderAttachment> tuneAttachment, gateAttachment, polyAttachment;
 
     juce::TextButton loadButton { "Load Models..." };
     std::unique_ptr<juce::FileChooser> chooser;

@@ -12,13 +12,21 @@ AdaptiveVoiceTransformEditor::AdaptiveVoiceTransformEditor (AdaptiveVoiceTransfo
     titleLabel.setFont (juce::Font (18.0f, juce::Font::bold));
     addAndMakeVisible (titleLabel);
 
-    tuneKnob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    tuneKnob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
-    addAndMakeVisible (tuneKnob);
-    tuneAttachment = std::make_unique<SliderAttachment> (p.getValueTreeState(), "tune", tuneKnob);
-    tuneLabel.setText ("Tune  (natural ... tight)", juce::dontSendNotification);
-    tuneLabel.setJustificationType (juce::Justification::centred);
-    addAndMakeVisible (tuneLabel);
+    auto setupKnob = [this, &p] (juce::Slider& k, juce::Label& l, const juce::String& name,
+                                 const juce::String& paramId,
+                                 std::unique_ptr<SliderAttachment>& att)
+    {
+        k.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        k.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 70, 18);
+        addAndMakeVisible (k);
+        att = std::make_unique<SliderAttachment> (p.getValueTreeState(), paramId, k);
+        l.setText (name, juce::dontSendNotification);
+        l.setJustificationType (juce::Justification::centred);
+        addAndMakeVisible (l);
+    };
+    setupKnob (tuneKnob, tuneLabel, "Tune",      "tune",      tuneAttachment);
+    setupKnob (gateKnob, gateLabel, "Gate",      "gate",      gateAttachment);
+    setupKnob (polyKnob, polyLabel, "Polyphony", "polyphony", polyAttachment);
 
     chordLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (chordLabel);
@@ -28,7 +36,7 @@ AdaptiveVoiceTransformEditor::AdaptiveVoiceTransformEditor (AdaptiveVoiceTransfo
     statusLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (statusLabel);
 
-    setSize (440, 300);
+    setSize (480, 290);
     startTimerHz (30);
 }
 
@@ -73,9 +81,17 @@ void AdaptiveVoiceTransformEditor::resized()
     chordLabel.setBounds (area.removeFromTop (40));
     chordLabel.setFont (juce::Font (22.0f, juce::Font::bold));
 
-    auto knob = area.removeFromTop (170);
-    tuneKnob.setBounds (knob.withSizeKeepingCentre (160, 160));
-    tuneLabel.setBounds (area.removeFromTop (20));
+    auto knobRow = area.removeFromTop (150);
+    auto labelRow = area.removeFromTop (20);
+    const int colW = knobRow.getWidth() / 3;
+    juce::Slider* knobs[3]  = { &tuneKnob,  &gateKnob,  &polyKnob };
+    juce::Label*  labels[3] = { &tuneLabel, &gateLabel, &polyLabel };
+    for (int i = 0; i < 3; ++i)
+    {
+        auto col = knobRow.removeFromLeft (colW);
+        knobs[i]->setBounds (col.withSizeKeepingCentre (120, 130));
+        labels[i]->setBounds (labelRow.removeFromLeft (colW));
+    }
 }
 
 void AdaptiveVoiceTransformEditor::chooseModelsFolder()

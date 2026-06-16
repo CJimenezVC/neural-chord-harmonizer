@@ -59,7 +59,7 @@ public:
     int getChordMask() const noexcept { return chordMask.load(); }
 
 private:
-    static constexpr int maxVoices = 5;       // lead + up to 4 harmony voices
+    static constexpr int maxVoices = 6;       // up to 6 chord tones (e.g. a guitar chord)
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     void runDetector();                       // drains scFifo, updates chord (held)
@@ -87,6 +87,8 @@ private:
 
     float chordHeld[12] = { 0 };              // peak-hold-with-decay chord state
     float voiceRatio[maxVoices] = { 0 };      // smoothed per-voice pitch ratio
+    float gateLinear = 0.0f;                  // instrument noise-gate threshold (RMS)
+    int   polyphony = maxVoices;              // max simultaneous detected notes
     std::atomic<int> chordMask { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AdaptiveVoiceTransformProcessor)
