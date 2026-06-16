@@ -35,12 +35,22 @@ NeuralChordHarmonizerProcessor::createParameterLayout()
 {
     using namespace juce;
     AudioProcessorValueTreeState::ParameterLayout layout;
+
+    // The slider text box routes through the parameter's getText(), so the
+    // displayed precision must be set here (a Slider's setNumDecimalPlaces is
+    // overridden by the APVTS attachment).
+    auto threeDp = [] (float v, int) { return String (v, 3); };
+
     layout.add (std::make_unique<AudioParameterFloat> (
         ParameterID { ParamID::tune, 1 }, "Tune",
-        NormalisableRange<float> (0.0f, 1.0f), 0.7f));   // natural .. tight
+        NormalisableRange<float> (0.0f, 1.0f), 0.7f,
+        AudioParameterFloatAttributes().withStringFromValueFunction (threeDp)));   // natural .. tight
     layout.add (std::make_unique<AudioParameterFloat> (
         ParameterID { ParamID::gate, 1 }, "Gate",
-        NormalisableRange<float> (-80.0f, -10.0f), -45.0f, "dB"));   // instrument noise gate
+        NormalisableRange<float> (-80.0f, -10.0f), -45.0f,
+        AudioParameterFloatAttributes()
+            .withLabel ("dB")
+            .withStringFromValueFunction ([] (float v, int) { return String (v, 3) + " dB"; })));   // instrument noise gate
     layout.add (std::make_unique<AudioParameterInt> (
         ParameterID { ParamID::polyphony, 1 }, "Polyphony", 1, maxVoices, 4));
     return layout;

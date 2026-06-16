@@ -27,8 +27,6 @@ NeuralChordHarmonizerEditor::NeuralChordHarmonizerEditor (NeuralChordHarmonizerP
     setupKnob (tuneKnob, tuneLabel, "Tune",      "tune",      tuneAttachment);
     setupKnob (gateKnob, gateLabel, "Gate",      "gate",      gateAttachment);
     setupKnob (polyKnob, polyLabel, "Polyphony", "polyphony", polyAttachment);
-    tuneKnob.setNumDecimalPlacesToDisplay (3);
-    gateKnob.setNumDecimalPlacesToDisplay (3);
 
     chordLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (chordLabel);
