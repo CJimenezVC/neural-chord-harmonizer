@@ -5,8 +5,9 @@
 #include <vector>
 
 /**
-    Pre-allocated linear mono FIFO used to buffer samples between the
-    host-rate and model-rate stages of the resampling chain.
+    Pre-allocated linear mono FIFO that buffers the downsampled (24 kHz)
+    sidechain instrument, accumulating samples until the chord detector has a
+    full analysis frame to consume.
 
     Real-time safe: storage is reserved in prepare(); push/consume never
     allocate. consume() compacts the remaining samples to the front with a

@@ -8,7 +8,7 @@
 #include "UI/LookAndFeel.h"
 
 /**
-    Harmonizer UI: a Tune knob (natural .. tight), a live readout of the
+    Harmonizer UI: Tune / Gate / Polyphony knobs, a live readout of the
     detected chord (12 note lamps), and a model loader.
 */
 class NeuralChordHarmonizerEditor : public juce::AudioProcessorEditor,

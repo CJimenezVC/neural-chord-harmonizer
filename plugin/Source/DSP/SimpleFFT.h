@@ -6,11 +6,12 @@
 
 /**
     Minimal in-place radix-2 Cooley-Tukey FFT for power-of-two sizes. JUCE-free
-    on purpose: the exact same feature-extraction code compiles into the plugin
-    and into the pybind11 training binding, guaranteeing identical features.
+    on purpose: it backs both the log-frequency detector feature and the voice
+    pitch shifters, and the same feature code also compiles into the pybind11
+    training binding, guaranteeing identical features.
 
-    Not the fastest FFT, but feature extraction is not the real-time bottleneck
-    (the neural inference is), and correctness/portability matter more here.
+    Not the fastest FFT, but it is not the real-time bottleneck (the per-voice
+    pitch shifters are), and correctness/portability matter more here.
 */
 class SimpleFFT
 {

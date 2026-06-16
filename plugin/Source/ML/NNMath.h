@@ -5,8 +5,8 @@
 
 /**
     Pure, dependency-free neural-network math used by NNModel. Kept JUCE-free so
-    it can be unit-tested directly (see plugin/Tests/test_nn.cpp) and validated
-    against the PyTorch reference (training/verify_rtneural_export.py).
+    it can be unit-tested directly against independent reference formulas (see
+    plugin/Tests/test_nn.cpp).
 
     Weight layouts match the exporter:
       dense  W: row-major [in][out]   -> out[o] = b[o] + Σ_i in[i]·W[i·outDim+o]

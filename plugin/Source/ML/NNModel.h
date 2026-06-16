@@ -6,16 +6,18 @@
 
 /**
     Minimal self-contained feed-forward engine for the exported `.rtneural`
-    models. Loads the JSON written by training/export_rtneural.py and runs a
-    single-frame (streaming) forward pass.
+    models. Loads the JSON written by training/export_chord.py (ChordNet) and
+    runs a single-frame (streaming) forward pass.
 
-    The math is validated to match the PyTorch models to ~1e-8 (see
-    training/verify_rtneural_export.py). It is deliberately dependency-light
-    (no RTNeural parser coupling) so it compiles and runs predictably; RTNeural
-    remains linked and can back an optimized path later.
+    The math is dependency-free and unit-tested to ~1e-8 against independent
+    reference formulas (see plugin/Tests/test_nn.cpp). It is deliberately
+    dependency-light (no RTNeural parser coupling) so it compiles and runs
+    predictably; RTNeural remains linked and can back an optimized path later.
 
-    Supported layers: dense, conv1d (single-frame centre tap), global_mean_pool
-    (identity for one frame), gru (state carried across forward() calls).
+    The shipped ChordNet uses only dense + ReLU + sigmoid. The engine also
+    supports conv1d (single-frame centre tap), global_mean_pool (identity for one
+    frame), and gru (state carried across forward() calls), retained for the
+    legacy models.
 */
 class NNModel
 {
