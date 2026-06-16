@@ -24,9 +24,11 @@ NeuralChordHarmonizerEditor::NeuralChordHarmonizerEditor (NeuralChordHarmonizerP
         l.setJustificationType (juce::Justification::centred);
         addAndMakeVisible (l);
     };
-    setupKnob (tuneKnob, tuneLabel, "Tune",      "tune",      tuneAttachment);
-    setupKnob (gateKnob, gateLabel, "Gate",      "gate",      gateAttachment);
-    setupKnob (polyKnob, polyLabel, "Polyphony", "polyphony", polyAttachment);
+    setupKnob (tuneKnob,    tuneLabel,    "Tune",      "tune",      tuneAttachment);
+    setupKnob (gateKnob,    gateLabel,    "Gate",      "gate",      gateAttachment);
+    setupKnob (attackKnob,  attackLabel,  "Attack",    "attack",    attackAttachment);
+    setupKnob (releaseKnob, releaseLabel, "Release",   "release",   releaseAttachment);
+    setupKnob (polyKnob,    polyLabel,    "Polyphony", "polyphony", polyAttachment);
 
     addAndMakeVisible (spectrogram);
     spectrogram.configure (processorRef.getSpectrumBins(),
@@ -43,7 +45,7 @@ NeuralChordHarmonizerEditor::NeuralChordHarmonizerEditor (NeuralChordHarmonizerP
     statusLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (statusLabel);
 
-    setSize (600, 470);
+    setSize (660, 470);
     startTimerHz (30);
 }
 
@@ -115,13 +117,14 @@ void NeuralChordHarmonizerEditor::resized()
     area.removeFromTop (8);
     spectrogram.setBounds (area);
 
-    const int colW = knobRow.getWidth() / 3;
-    juce::Slider* knobs[3]  = { &tuneKnob,  &gateKnob,  &polyKnob };
-    juce::Label*  labels[3] = { &tuneLabel, &gateLabel, &polyLabel };
-    for (int i = 0; i < 3; ++i)
+    juce::Slider* knobs[5]  = { &tuneKnob,  &gateKnob,  &attackKnob,  &releaseKnob,  &polyKnob };
+    juce::Label*  labels[5] = { &tuneLabel, &gateLabel, &attackLabel, &releaseLabel, &polyLabel };
+    const int colW = knobRow.getWidth() / 5;
+    const int knobW = juce::jmin (110, colW - 6);
+    for (int i = 0; i < 5; ++i)
     {
         auto col = knobRow.removeFromLeft (colW);
-        knobs[i]->setBounds (col.withSizeKeepingCentre (120, 130));
+        knobs[i]->setBounds (col.withSizeKeepingCentre (knobW, knobW + 18));
         labels[i]->setBounds (labelRow.removeFromLeft (colW));
     }
 }

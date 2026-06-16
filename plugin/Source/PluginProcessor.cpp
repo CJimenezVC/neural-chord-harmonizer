@@ -11,6 +11,8 @@ namespace ParamID
 {
     constexpr auto tune      = "tune";
     constexpr auto gate      = "gate";
+    constexpr auto attack    = "attack";
+    constexpr auto release   = "release";
     constexpr auto polyphony = "polyphony";
 }
 
@@ -51,6 +53,15 @@ NeuralChordHarmonizerProcessor::createParameterLayout()
         AudioParameterFloatAttributes()
             .withLabel ("dB")
             .withStringFromValueFunction ([] (float v, int) { return String (v, 3) + " dB"; })));   // instrument noise gate
+    auto ms1 = [] (float v, int) { return String (v, 1) + " ms"; };
+    layout.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { ParamID::attack, 1 }, "Attack",
+        NormalisableRange<float> (0.5f, 200.0f, 0.0f, 0.4f), 8.0f,    // skewed for ms feel
+        AudioParameterFloatAttributes().withLabel ("ms").withStringFromValueFunction (ms1)));
+    layout.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { ParamID::release, 1 }, "Release",
+        NormalisableRange<float> (2.0f, 2000.0f, 0.0f, 0.35f), 250.0f,
+        AudioParameterFloatAttributes().withLabel ("ms").withStringFromValueFunction (ms1)));
     layout.add (std::make_unique<AudioParameterInt> (
         ParameterID { ParamID::polyphony, 1 }, "Polyphony", 1, maxVoices, 4));
     return layout;
@@ -75,11 +86,13 @@ void NeuralChordHarmonizerProcessor::prepareToPlay (double sampleRate, int sampl
     voiceMono.assign ((size_t) samplesPerBlock, 0.0f);
     voiceOut.assign  ((size_t) samplesPerBlock, 0.0f);
     mixBuf.assign    ((size_t) samplesPerBlock, 0.0f);
+    for (auto& b : voiceBuf) b.assign ((size_t) samplesPerBlock, 0.0f);
     yinBuf.assign ((size_t) yinWindow, 0.0f);
     yinFill = 0;
 
     std::fill (std::begin (chordHeld), std::end (chordHeld), 0.0f);
     for (auto& r : voiceRatio) r = 1.0f;
+    for (auto& g : voiceGain)  g = 0.0f;
 
     specRing.assign ((size_t) kSpecBins * kSpecCols, kSpecFloor);
     specWrite.store (0, std::memory_order_release);
@@ -244,38 +257,52 @@ void NeuralChordHarmonizerProcessor::processBlock (juce::AudioBuffer<float>& buf
     }
     const auto [voiceHz, conf] = voiceYin.detect (yinBuf.data(), yinWindow);
 
-    // Choir: one pitch-shifted voice per detected chord tone, summed.
+    // Gate attack/release: one-pole coefficients for the per-voice gain envelope.
+    const float atkMs = apvts.getRawParameterValue (ParamID::attack)->load();
+    const float relMs = apvts.getRawParameterValue (ParamID::release)->load();
+    const float aCoef = std::exp (-1.0f / (std::max (0.1f, atkMs) * 0.001f * (float) hostRate));
+    const float rCoef = std::exp (-1.0f / (std::max (0.1f, relMs) * 0.001f * (float) hostRate));
+
+    // Choir: one pitch-shifted voice per detected chord tone.
     int targets[maxVoices];
     const int nTargets = (conf > 0.2f) ? collectTargets (voiceHz, targets) : 0;
 
-    std::fill (mixBuf.begin(), mixBuf.begin() + numSamples, 0.0f);
-    int nMixed = 0;
+    bool active[maxVoices];
     for (int v = 0; v < maxVoices; ++v)
     {
-        const bool active = (v < nTargets) && (voiceHz >= 60.0f);
+        active[v] = (v < nTargets) && (voiceHz >= 60.0f);
         float rTarget = 1.0f;
-        if (active)
+        if (active[v])
         {
             const float targetHz = 440.0f * std::pow (2.0f, (float) (targets[v] - 69) / 12.0f);
             rTarget = std::pow (targetHz / voiceHz, tune);   // tune: 0 = dry .. 1 = full chord
         }
         voiceRatio[v] += 0.25f * (rTarget - voiceRatio[v]);  // smooth (glide)
         voices[v].setRatio (voiceRatio[v]);
-        voices[v].process (voiceMono.data(), voiceOut.data(), numSamples);
-
-        if (active)
-        {
-            for (int n = 0; n < numSamples; ++n) mixBuf[(size_t) n] += voiceOut[(size_t) n];
-            ++nMixed;
-        }
+        voices[v].process (voiceMono.data(), voiceBuf[v].data(), numSamples);
     }
-    // No detected chord (or unvoiced) -> mixBuf stays zero -> output is silent.
 
-    const float norm = nMixed > 1 ? 1.0f / std::sqrt ((float) nMixed) : 1.0f;
+    // Sum per sample, ramping each voice's gain with attack/release so voices
+    // fade in/out instead of clicking. Equal-power normalize by the (smooth) sum
+    // of gains, so the level never jumps when a voice or the whole chord ends.
+    for (int n = 0; n < numSamples; ++n)
+    {
+        float mix = 0.0f, gsum = 0.0f;
+        for (int v = 0; v < maxVoices; ++v)
+        {
+            const float tgt = active[v] ? 1.0f : 0.0f;
+            const float c   = (tgt > voiceGain[v]) ? aCoef : rCoef;
+            voiceGain[v] = tgt + (voiceGain[v] - tgt) * c;
+            mix  += voiceGain[v] * voiceBuf[v][(size_t) n];
+            gsum += voiceGain[v];
+        }
+        mixBuf[(size_t) n] = gsum > 1.0f ? mix / std::sqrt (gsum) : mix;
+    }
+
     for (int ch = 0; ch < mainOut.getNumChannels(); ++ch)
     {
         auto* o = mainOut.getWritePointer (ch);
-        for (int n = 0; n < numSamples; ++n) o[n] = mixBuf[(size_t) n] * norm;
+        for (int n = 0; n < numSamples; ++n) o[n] = mixBuf[(size_t) n];
     }
 }
 

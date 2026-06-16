@@ -100,11 +100,13 @@ private:
     std::vector<float> pcAct;                 // 12 activations
 
     std::vector<float> voiceMono, voiceOut, mixBuf;   // per-block scratch (host rate)
+    std::vector<float> voiceBuf[maxVoices];   // per-voice pitch-shifted output
     std::vector<float> yinBuf;                // rolling voice window for F0
     int yinWindow = 2048, yinFill = 0;
 
     float chordHeld[12] = { 0 };              // peak-hold-with-decay chord state
     float voiceRatio[maxVoices] = { 0 };      // smoothed per-voice pitch ratio
+    float voiceGain[maxVoices]  = { 0 };      // attack/release amplitude envelope per voice
     float gateLinear = 0.0f;                  // instrument noise-gate threshold (RMS)
     int   polyphony = maxVoices;              // max simultaneous detected notes
     std::atomic<int> chordMask { 0 };

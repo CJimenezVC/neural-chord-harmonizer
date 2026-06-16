@@ -144,10 +144,15 @@ normalized (`1/√N`). No chord (or unvoiced input) → silent output.
 | ----------- | -------------- | ------------------------------------------------- |
 | `Tune`      | 0 – 1          | Natural blend → tight snap (hard auto-tune)       |
 | `Gate`      | −80 – −10 dB   | Instrument RMS threshold for the detector         |
+| `Attack`    | 0.5 – 200 ms   | Fade-in time as the choir opens on a new chord    |
+| `Release`   | 2 – 2000 ms    | Fade-out time as the chord ends (kills end clicks)|
 | `Polyphony` | 1 – 6          | Max simultaneous harmony voices (e.g. 6 = guitar) |
 
 All are exposed via `AudioProcessorValueTreeState` and smoothed on the audio
-thread to avoid zipper noise.
+thread to avoid zipper noise. Attack/Release drive a per-voice one-pole gain
+envelope: each harmony voice fades in/out instead of switching on/off, and the
+equal-power mix is normalized by the (smoothly changing) sum of voice gains, so
+the output never jumps when a voice or the whole chord ends.
 
 ## 6. Streaming & Latency
 

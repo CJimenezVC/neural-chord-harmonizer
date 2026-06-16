@@ -32,9 +32,11 @@ private:
     NeuralChordHarmonizerProcessor& processorRef;
     AvtLookAndFeel lookAndFeel;
 
-    juce::Slider tuneKnob, gateKnob, polyKnob;
-    juce::Label  tuneLabel, gateLabel, polyLabel, titleLabel, chordLabel, statusLabel;
-    std::unique_ptr<SliderAttachment> tuneAttachment, gateAttachment, polyAttachment;
+    juce::Slider tuneKnob, gateKnob, attackKnob, releaseKnob, polyKnob;
+    juce::Label  tuneLabel, gateLabel, attackLabel, releaseLabel, polyLabel,
+                 titleLabel, chordLabel, statusLabel;
+    std::unique_ptr<SliderAttachment> tuneAttachment, gateAttachment,
+                 attackAttachment, releaseAttachment, polyAttachment;
 
     juce::TextButton loadButton { "Load Models..." };
     std::unique_ptr<juce::FileChooser> chooser;
