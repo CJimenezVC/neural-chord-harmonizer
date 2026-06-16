@@ -16,7 +16,7 @@ AdaptiveVoiceTransformEditor::AdaptiveVoiceTransformEditor (AdaptiveVoiceTransfo
     tuneKnob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
     addAndMakeVisible (tuneKnob);
     tuneAttachment = std::make_unique<SliderAttachment> (p.getValueTreeState(), "tune", tuneKnob);
-    tuneLabel.setText ("Tune  (natural → tight)", juce::dontSendNotification);
+    tuneLabel.setText ("Tune  (natural ... tight)", juce::dontSendNotification);
     tuneLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (tuneLabel);
 
@@ -47,7 +47,7 @@ void AdaptiveVoiceTransformEditor::timerCallback()
         juce::StringArray notes;
         for (int i = 0; i < 12; ++i)
             if (mask & (1 << i)) notes.add (kNoteNames[i]);
-        chordLabel.setText (notes.isEmpty() ? "— listening —" : notes.joinIntoString (" "),
+        chordLabel.setText (notes.isEmpty() ? "(listening)" : notes.joinIntoString (" "),
                             juce::dontSendNotification);
     }
     const bool loaded = processorRef.modelsLoaded();
