@@ -1,5 +1,8 @@
 """Audio preprocessing: resample, extract features, pack to HDF5, build splits.
 
+[LEGACY/DEPRECATED - old voice-conversion engine; not used by the chord harmonizer.]
+
+
 Run via ``scripts/preprocess_data.sh`` or directly:
 
     python preprocess.py --config config.yaml

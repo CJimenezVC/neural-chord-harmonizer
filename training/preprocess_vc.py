@@ -1,5 +1,8 @@
 """Build DTW-aligned parallel pairs for voice conversion training.
 
+[LEGACY/DEPRECATED - old voice-conversion engine; not used by the chord harmonizer.]
+
+
 VCC2020 Task 1 is parallel (same sentences across speakers), but source and
 target utterances aren't time-aligned. For each (source speaker, target speaker)
 pair that shares a sentence, we DTW-align their mel sequences so the model can

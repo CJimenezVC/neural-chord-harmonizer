@@ -1,5 +1,9 @@
 """Export trained PyTorch checkpoints to RTNeural JSON model files.
 
+[MOSTLY LEGACY - this exports the old voice-conversion sub-models. It is kept
+because the active chord pipeline reuses its linear_layer() helper (imported by
+export_chord.py).]
+
     python export_rtneural.py --config config.yaml
 
 RTNeural consumes a JSON description of layers + weights. This script walks each

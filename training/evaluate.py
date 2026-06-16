@@ -1,5 +1,8 @@
 """Objective evaluation: Mel Cepstral Distortion (MCD) and F0 RMSE.
 
+[LEGACY/DEPRECATED - old voice-conversion engine; not used by the chord harmonizer.]
+
+
     python evaluate.py --checkpoint ../models/pytorch --split test
 """
 from __future__ import annotations

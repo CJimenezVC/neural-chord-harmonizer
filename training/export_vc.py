@@ -1,5 +1,8 @@
 """Export the voice-conversion model (decoder + target embeddings) for the plugin.
 
+[LEGACY/DEPRECATED - old voice-conversion engine; not used by the chord harmonizer.]
+
+
 Writes decoder.rtneural and a model_info.json with mode="conversion", the target
 names, the learned speaker embeddings, and the usual stats/filterbank/pinv.
 

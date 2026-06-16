@@ -1,5 +1,8 @@
 """Dataset and DataLoader for preprocessed VCC2020 / CMU Arctic features.
 
+[LEGACY/DEPRECATED - old voice-conversion engine; not used by the chord harmonizer.]
+
+
 Reads packed mel-spectrogram + F0 features from the HDF5 files produced by
 ``preprocess.py`` and yields fixed-length windows for training.
 """

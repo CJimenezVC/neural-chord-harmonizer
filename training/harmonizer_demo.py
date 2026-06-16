@@ -3,7 +3,11 @@
 Synthesizes an instrument chord progression, runs a real voice through the
 trained ChordNet (active pitch classes per frame) + YIN F0, snaps the voice to
 the nearest chord tone, and pitch-shifts it with a formant-preserving phase
-vocoder (the reference algorithm for the C++ plugin).
+vocoder (the pitch-shifter here is the reference algorithm for the C++ plugin).
+
+Note: this demo is single-voice (it snaps to the nearest chord tone). The plugin
+goes further and builds a choir - one pitch-shifted voice per detected chord
+tone. Only the formant-preserving pitch-shifter is shared with the plugin.
 
 Outputs WAVs and reports how well the tuned voice lands on the chord tones.
 

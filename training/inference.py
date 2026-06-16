@@ -1,5 +1,8 @@
 """Offline inference for sanity-checking trained models on a single file.
 
+[LEGACY/DEPRECATED - old voice-conversion engine; not used by the chord harmonizer.]
+
+
     python inference.py --input sample.wav --output out.wav --models ../models/pytorch
 
 Mirrors the plugin's signal chain in Python: extract mel -> encode -> decode ->

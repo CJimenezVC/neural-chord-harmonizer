@@ -1,5 +1,8 @@
 """Voice conversion training: (source mel, target speaker) -> target mel.
 
+[LEGACY/DEPRECATED - old voice-conversion engine; not used by the chord harmonizer.]
+
+
 Trains VoiceConversionModel on the DTW-aligned VCC2020 parallel pairs built by
 preprocess_vc.py. Saves the decoder + the learned target-speaker embeddings.
 

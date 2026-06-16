@@ -1,5 +1,8 @@
 """Validate the exported .rtneural files against the PyTorch models.
 
+[LEGACY/DEPRECATED - old voice-conversion engine; not used by the chord harmonizer.]
+
+
 Loads the JSON written by export_rtneural.py, runs a numpy forward pass that
 mirrors exactly what the C++ plugin does (single-frame / streaming), and
 compares against the PyTorch reference. If the max abs diff is tiny, both the

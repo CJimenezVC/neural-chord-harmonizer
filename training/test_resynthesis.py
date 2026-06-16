@@ -1,5 +1,8 @@
 """Offline check of the plugin's mel-inversion resynthesis path.
 
+[LEGACY/DEPRECATED - old voice-conversion engine; not used by the chord harmonizer.]
+
+
 Mirrors the C++ audio chain exactly (per 24 kHz frame):
   STFT(Hann) -> mag, phase
   mel = log(melfb @ mag + 1e-6)

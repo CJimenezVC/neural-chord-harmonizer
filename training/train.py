@@ -1,5 +1,9 @@
 """Main training loop for the full VoiceTransformModel.
 
+[MOSTLY LEGACY - this trains the old voice-conversion model. It is kept because
+the active chord pipeline reuses its pick_device() helper (imported by
+train_chord.py); use train_chord.py to train the harmonizer's detector.]
+
     python train.py --config config.yaml
 
 Optimizes a reconstruction objective through the whole pipeline:
