@@ -121,4 +121,12 @@ pybind11 binding (`bindings/`), so there is no Python/C++ feature drift.
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+GNU GPL v3.0 with the **Commons Clause** — see [`LICENSE`](LICENSE). You may
+use, modify, and redistribute the software under the GPLv3; the Commons Clause
+adds one restriction: you may **not Sell** it (i.e. provide it, or a service
+whose value derives substantially from it, for a fee). For commercial licensing,
+contact the author.
+
+> Note: the Commons Clause makes this **source-available**, not OSI
+> open-source — the "no Sell" condition is a restriction GPLv3 alone does not
+> impose.
