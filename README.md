@@ -58,7 +58,6 @@ for the detailed design.
 | `training/`   | Python training pipeline (synthetic chords → RTNeural)  |
 | `plugin/`     | JUCE VST3/AU/Standalone plugin (C++)                    |
 | `models/`     | Trained ChordNet + RTNeural export                      |
-| `bindings/`   | pybind11 binding exposing the C++ DSP feature to Python |
 | `benchmarks/` | Latency / CPU / memory measurements                     |
 | `docs/`       | Architecture, training, build, and DSP documentation    |
 
@@ -110,13 +109,8 @@ Every piece of the chain is validated against its Python reference:
 | Formant-preserving shifter | corr vs Python reference           | ~0.996        |
 | ChordNet detection         | F1 on held-out synthetic chords    | ~0.996        |
 
-The training feature is computed by the plugin's **exact C++ DSP** via a
-pybind11 binding (`bindings/`), so there is no Python/C++ feature drift.
-
-> **Legacy:** an earlier neural voice-conversion engine ("Adaptive Voice
-> Transform") lives in the tree (`ML/Encoder|Decoder|VocoderNetwork`,
-> `DSP/FeatureExtractor`, etc.). It is **deprecated** and not built into the
-> current plugin target; the harmonizer is the active product.
+The C++ `LogFreqFeature` is a direct port of `chord_synth.py:frame_feature`, so
+the plugin and training see the same feature (validated to ~3.4e-5).
 
 ## References
 

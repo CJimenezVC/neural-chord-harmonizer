@@ -22,7 +22,17 @@ from torch.utils.data import DataLoader
 
 import chord_synth as cs
 from model import ChordNet, count_parameters
-from train import pick_device
+
+
+def pick_device(requested: str = "auto") -> str:
+    """Prefer Apple MPS, fall back to CUDA, then CPU."""
+    if requested != "auto":
+        return requested
+    if torch.backends.mps.is_available():
+        return "mps"
+    if torch.cuda.is_available():
+        return "cuda"
+    return "cpu"
 
 
 @torch.no_grad()

@@ -24,7 +24,3 @@ python export_chord.py    # -> models/pretrained/chordnet.rtneural + chord_info.
 
 Load into the plugin via the editor's **Load Models...** button or the
 `AVT_MODELS_DIR` environment variable.
-
-> Legacy `encoder.rtneural` / `decoder.rtneural` / `vocoder.rtneural` and
-> `model_info.json` may still be present from the deprecated voice-conversion
-> engine; the harmonizer does not use them.

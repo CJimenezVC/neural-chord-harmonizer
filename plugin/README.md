@@ -23,14 +23,10 @@ Source/
 ├── ML/
 │   ├── ChordDetector.*       # LogFreqFeature + NNModel → 12 pitch classes
 │   └── NNModel.* / NNMath.h  # self-contained dense/relu/sigmoid inference
-├── UI/                       # look & feel
-└── Tests/                    # JUCE-free unit tests (FFT, FIFO, OLA, NN math)
-```
+└── UI/                       # look & feel
 
-> **Legacy (deprecated, not compiled into the target):** `DSP/FeatureExtractor`,
-> `DSP/FormantAnalyzer`, `DSP/SpectrogramProcessor`, and `ML/{Encoder,Decoder,
-> Vocoder}Network`, `ML/ModelManager`, `ML/NeuralAudioProcessor` are leftovers
-> from the old voice-conversion engine.
+Tests/                        # JUCE-free unit tests (FFT, FIFO, OLA, NN math)
+```
 
 ## Build
 

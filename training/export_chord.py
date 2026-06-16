@@ -13,8 +13,17 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from export_rtneural import linear_layer
 from model import ChordNet
+
+
+def linear_layer(weight: torch.Tensor, bias: torch.Tensor, activation: str = "none") -> dict:
+    """One RTNeural 'dense' layer spec for the NNModel loader."""
+    return {
+        "type": "dense",
+        "shape": [weight.shape[1], weight.shape[0]],
+        "weights": [weight.t().tolist(), bias.tolist()],
+        "activation": activation,
+    }
 
 
 def main() -> None:

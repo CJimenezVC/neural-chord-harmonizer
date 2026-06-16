@@ -53,6 +53,5 @@ data/
 └── audio_samples/        # small committed demo audio (vocals, etc.)
 ```
 
-> There is no `datasets/` tree to fetch. The legacy voice-conversion pipeline
-> used VCC2020 + CMU Arctic; that path is deprecated and no longer part of the
-> harmonizer.
+> There is no external dataset to download — the detector trains entirely on
+> synthesized chords.

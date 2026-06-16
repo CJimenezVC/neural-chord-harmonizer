@@ -77,19 +77,17 @@ models/pretrained/chordnet.rtneural    # dense weights for NNModel
 models/pretrained/chord_info.json      # in_dim, n_fft, sample_rate, midi_lo/hi, logfreq_fb
 ```
 
-The exporter validates that the C++ `NNModel` output matches PyTorch within
-tolerance (~1.8e-7) before writing.
+`export_chord.py` writes the dense weights in the layout the C++ `NNModel`
+expects; the self-contained `NNModel` engine is itself unit-tested against
+independent reference formulas (`plugin/Tests/test_nn.cpp`), and the streaming
+forward pass matches PyTorch to ~1.8e-7.
 
 ## 6. Feature parity (no train/inference drift)
 
-The plugin's C++ `LogFreqFeature` is exposed to Python via a pybind11 binding
-(`bindings/`). Training can call the **exact plugin DSP**, and the C++ feature is
-validated against the Python feature to ~3.4e-5 — so what the model learns on is
-what the plugin feeds it.
-
-```bash
-cd bindings && ./build.sh        # builds the avtdsp Python module
-```
+The plugin's C++ `LogFreqFeature` is a direct port of
+`chord_synth.py:frame_feature` (same STFT, same baked filterbank, same per-frame
+RMS normalization), validated to ~3.4e-5 — so what the model trains on is what
+the plugin feeds it.
 
 ## 7. Sanity check in the plugin
 

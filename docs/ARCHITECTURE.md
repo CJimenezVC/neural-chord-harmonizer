@@ -16,11 +16,6 @@ each stage of the Chord Harmonizer to the concrete C++ class that implements it.
 | Chord detector         | `ChordDetector`                | `plugin/Source/ML/`          |
 | Plugin host glue       | `PluginProcessor`, `PluginEditor`| `plugin/Source/`           |
 
-> **Legacy (deprecated, not in the build):** `FeatureExtractor`,
-> `FormantAnalyzer`, `SpectrogramProcessor`, `EncoderNetwork`,
-> `DecoderNetwork`, `VocoderNetwork`, `ModelManager`, `NeuralAudioProcessor`
-> belong to the old voice-conversion engine and are kept for reference only.
-
 ## Data Flow (audio thread)
 
 The host runs at any sample rate. Only the sidechain is resampled to the

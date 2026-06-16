@@ -13,6 +13,3 @@ data/
 
 For live use, route a real instrument to the plugin's sidechain and sing into
 the main input — no data files required.
-
-> The legacy voice-conversion pipeline used a `datasets/` tree (VCC2020 + CMU
-> Arctic). That path is deprecated and no longer built or fetched.
