@@ -1,6 +1,6 @@
 # Plugin
 
-JUCE VST3/AU/Standalone plugin for Adaptive Voice Transform. Built with CMake;
+JUCE VST3/AU/Standalone plugin for the **Chord Harmonizer**. Built with CMake;
 JUCE and RTNeural are fetched automatically (see `../docs/PLUGIN_BUILD.md`).
 
 > This project uses the **CMake** JUCE workflow, not Projucer. `JuceHeader.h`
@@ -11,19 +11,34 @@ JUCE and RTNeural are fetched automatically (see `../docs/PLUGIN_BUILD.md`).
 
 ```
 Source/
-├── PluginProcessor.{h,cpp}   # AudioProcessor: streaming chain + APVTS
-├── PluginEditor.{h,cpp}      # UI: style knob, sliders, presets, analyzers
-├── DSP/                      # STFT, mel, YIN F0, formants, streaming buffers
-├── ML/                       # RTNeural encoder/decoder/vocoder + manager
-├── Parameters/               # style params, interpolation, smoothing
-├── UI/                       # knob, presets, look & feel, spectrum analyzer
-└── Utilities/                # profiling, logging, buffer helpers
+├── PluginProcessor.{h,cpp}   # AudioProcessor: detector + voice paths + APVTS
+├── PluginEditor.{h,cpp}      # UI: Tune/Gate/Polyphony knobs, chord readout, model loader
+├── DSP/
+│   ├── LogFreqFeature.h      # 61-bin log-frequency detector feature (level-invariant)
+│   ├── PitchShifter.h        # formant-preserving phase-vocoder pitch shift
+│   ├── SimpleFFT.h           # JUCE-free radix-2 FFT (plugin + tests)
+│   ├── YINPitchDetector.*    # voice F0
+│   ├── Resampler.h / SampleFifo.h  # sidechain host → 24 kHz
+│   └── OverlapAddBuffer.*    # streaming reconstruction
+├── ML/
+│   ├── ChordDetector.*       # LogFreqFeature + NNModel → 12 pitch classes
+│   └── NNModel.* / NNMath.h  # self-contained dense/relu/sigmoid inference
+├── UI/                       # look & feel
+└── Tests/                    # JUCE-free unit tests (FFT, FIFO, OLA, NN math)
 ```
+
+> **Legacy (deprecated, not compiled into the target):** `DSP/FeatureExtractor`,
+> `DSP/FormantAnalyzer`, `DSP/SpectrogramProcessor`, and `ML/{Encoder,Decoder,
+> Vocoder}Network`, `ML/ModelManager`, `ML/NeuralAudioProcessor` are leftovers
+> from the old voice-conversion engine.
 
 ## Build
 
 ```bash
 ../scripts/build_plugin.sh           # Release
-cmake -B build -DAVT_BUILD_TESTS=ON  # with unit tests
-ctest --test-dir build
+
+# JUCE-free DSP unit tests (no JUCE needed)
+cd Tests && clang++ -std=c++20 -I../Source -O2 \
+    test_main.cpp test_dsp.cpp test_nn.cpp ../Source/DSP/OverlapAddBuffer.cpp \
+    -o /tmp/avt_tests && /tmp/avt_tests
 ```

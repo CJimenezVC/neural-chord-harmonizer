@@ -1,194 +1,185 @@
 # Technical Architecture
 
-This document describes the end-to-end design of Adaptive Voice Transform: the
-audio processing pipeline, the neural model architecture, the streaming /
-latency strategy, and the training objective.
+This document describes the end-to-end design of the **Chord Harmonizer**: the
+two signal paths (detector and voice), the neural detector architecture, the
+formant-preserving pitch shifter, and the training objective.
 
 ## 1. Design Thesis
 
-End-to-end neural voice conversion is powerful but hard to make real-time,
-controllable, and stable. Adaptive Voice Transform instead uses a **hybrid
-DSP-neural chain**:
+A musically useful vocal harmonizer needs to know *which notes to sing*. Rather
+than hand-tuning a polyphonic pitch tracker, the Chord Harmonizer uses a
+**hybrid DSP-neural split**:
 
-- **Deterministic DSP** handles what classical signal processing does well:
-  STFT, mel projection, F0 estimation (YIN), and formant analysis.
-- **Lightweight neural networks** handle what is hard to specify by hand:
-  learning a compact *style* representation and mapping it back to a
-  transformed mel-spectrogram.
-- **User parameters** modulate the style vector continuously, so the plugin
-  exposes musical controls (style blend, brightness, formant shift, pitch
-  shift) rather than discrete preset switches.
+- **A neural network listens.** A lightweight dense net (ChordNet) maps a
+  log-frequency spectrum of the sidechain instrument to 12 pitch-class
+  probabilities. Polyphony, harmonic overtones, and timbre variation are exactly
+  what's hard to specify by hand and easy to learn.
+- **Deterministic DSP sings.** A bank of formant-preserving phase-vocoder pitch
+  shifters re-voices the singer onto the detected chord tones, preserving vocal
+  timbre (formants) so the result still sounds like the singer.
+- **User parameters** shape the result continuously: how tightly the voice
+  snaps (`Tune`), how loud the instrument must be to register (`Gate`), and how
+  many harmony voices to stack (`Polyphony`).
 
-The whole chain is designed to be differentiable end-to-end during training and
-streaming-safe during inference.
+The detector is trained on synthesized chords and validated against the exact
+C++ feature, so there is no train/inference drift.
 
-## 2. Audio Processing Pipeline
+## 2. Signal Paths
 
 ```
-Input Audio (host rate, e.g. 48 kHz)
-  │
-  ├─ [Downsample]       host rate → 24 kHz (Lagrange resampler)
-  │
-  ├─ [Feature Extraction DSP]   @ 24 kHz
-  │    STFT (512, 75% overlap) → mel (128 bins) → YIN F0 → formants
-  │
-  ├─ [Neural Encoder]   mel → style vector (64-d)
-  │
-  ├─ [Style Modulation] user params interpolate / shift the style vector
-  │
-  ├─ [Neural Decoder]   (mel ⊕ style) → transformed mel (128 bins)
-  │
-  ├─ [WaveRNN Vocoder]  mel → waveform @ 24 kHz
-  │
-  ├─ [Post-DSP]         overlap-add, spectral smoothing, artifact suppression
-  │
-  └─ [Upsample]         24 kHz → host rate (Lagrange resampler)
-  │
-Output Audio (host rate, ~40 ms latency)
+                         ┌─────────────────── Detector path (24 kHz) ───────────────────┐
+Sidechain instrument ──► │ Downsample → Log-freq feature → ChordNet → peak-hold + gate │ ──► chord (12-pc mask)
+(host rate)              └──────────────────────────────────────────────────────────────┘             │
+                                                                                                        │
+                         ┌─────────────────── Voice path (host rate) ──────────────────┐                │
+Main voice ───────────►  │ YIN F0 → for each chord tone: formant-preserving pitch shift │ ◄──────────────┘
+(host rate)              │            → equal-power sum (choir)                         │
+                         └──────────────────────────────────────────────────────────────┘
+                                                       │
+                                                       ▼
+                                            Output (host rate)
 ```
 
 ### Dual sample-rate design
 
-The models are trained and run **at 24 kHz** (VCC2020's native rate) to halve
-compute and memory versus 48 kHz. The plugin presents the host's rate (any rate;
-typically 48 kHz) and brackets the neural chain with resamplers:
+The detector runs at a fixed **24 kHz** — the rate its log-frequency feature and
+ChordNet were trained at. The plugin downsamples only the **sidechain** to
+24 kHz (`juce::LagrangeInterpolator` via `DSP/Resampler.h`, fed from a
+`SampleFifo`). The **voice path** stays at the host rate end-to-end, so the
+pitch shifter introduces no resampling artifacts on the audible signal.
 
-- **Downsample** host → 24 kHz before feature extraction.
-- **Upsample** 24 kHz → host after the vocoder.
-
-Both use `juce::LagrangeInterpolator` (see `plugin/Source/DSP/Resampler.h`), fed
-from small FIFOs so fractional sample-rate ratios (e.g. 44.1 kHz hosts) don't
-drift. Speech energy lives well below the 12 kHz Nyquist at 24 kHz, so the
-perceptual cost is negligible while compute drops ~2×.
+At 24 kHz, `N_FFT = 2048` gives ~11.7 Hz/bin — enough to resolve fundamentals
+down to ~C2, which covers bass, guitar, and piano usefully.
 
 ### Frame parameters
 
-| Parameter        | Value                                  |
-| ---------------- | -------------------------------------- |
-| Host sample rate | any (typ. 48 kHz)                      |
-| Model sample rate| 24 kHz (fixed)                         |
-| STFT window      | 512 samples @ 24 kHz (~21.3 ms)        |
-| Overlap          | 75 % (hop = 128 samples, ~5.3 ms)      |
-| Mel bins         | 128 (20 Hz – 8 kHz)                    |
-| Frame rate       | ~187 frames/s (hop 128 @ 24 kHz)       |
-| F0 range         | 50 – 500 Hz (YIN)                      |
-| Lookahead        | 4 frames (vocoder stability)           |
+| Parameter             | Value                                     |
+| --------------------- | ----------------------------------------- |
+| Host sample rate      | any (typ. 48 kHz)                         |
+| Detector sample rate  | 24 kHz (fixed)                            |
+| Detector FFT / hop    | 2048 / 512 (~85 ms window, ~21 ms hop)    |
+| Log-freq bins         | 61 (one per semitone, MIDI 36–96 / C2–C7) |
+| Voice pitch-shift FFT | 1024, hop 256 (host rate)                 |
+| Voice F0              | YIN, ~60–500 Hz                           |
+| Harmony voices        | up to 6                                   |
 
-## 3. Model Architecture
+## 3. Detector: ChordNet
 
-### 3.1 Encoder (~150 K params)
-
-```
-mel (T, 128)
-  → Conv1D(128→256, k=3) + ReLU
-  → Conv1D(256→256, k=3) + ReLU
-  → GlobalMeanPool → (256,)
-  → Dense(256→128) + ReLU
-  → Dense(128→64)            # style vector
-```
-
-The bottleneck forces the encoder to compress speaker/style identity into a
-64-dim vector. Trained on random ~680 ms windows (32 frames), one style vector
-per utterance.
-
-### 3.2 Decoder (~200 K params)
+### 3.1 Log-frequency feature (`DSP/LogFreqFeature.h`)
 
 ```
-mel (T, 128) ⊕ style (T, 64)  →  (T, 192)
-  → Conv1D(192→256, k=3) + ReLU
-  → Conv1D(256→256, k=3) + ReLU
-  → Conv1D(256→256, k=3) + ReLU
+frame (2048 @ 24 kHz)
+  → unit-RMS normalize          # level-invariant: detects at any input gain
+  → Hann window → real FFT → |·|
+  → semitone filterbank (61 × nbins, baked from chord_info.json)
+  → log(· + 1e-6)               # 61-d feature
+```
+
+The per-frame RMS normalization makes detection independent of how loud the
+instrument is recorded — a quiet pick and a clipping strum produce the same
+feature. The filterbank is baked at training time and shipped in
+`chord_info.json`, so the C++ feature is bit-for-bit comparable to Python
+(validated to ~3.4e-5).
+
+### 3.2 ChordNet (`ML/ChordDetector` + `ML/NNModel`)
+
+```
+feature (61)
+  → Dense(61→256) + ReLU
   → Dense(256→256) + ReLU
-  → Dense(256→128)           # transformed mel
+  → Dense(256→12) → Sigmoid     # 12 independent pitch-class probabilities
 ```
 
-The style vector is broadcast frame-wise and concatenated to each mel frame.
+A small dense, multi-label classifier: each of the 12 outputs is an independent
+"is this pitch class sounding?" probability (sigmoid, not softmax — chords are
+polyphonic). Dense-only so it exports cleanly to the self-contained `NNModel`
+engine (validated vs PyTorch to ~1.8e-7). Trained F1 ≈ 0.996.
 
-### 3.3 WaveRNN Vocoder (~150 K params)
+### 3.3 Chord stabilization
 
-```
-mel (T, 128)
-  → Conditioning: Conv1D(128→128) × 4
-  → GRU(128→64) with mel conditioning
-  → Dense(64→256) → Softmax     # 256-way μ-law quantization
-  → waveform (T, 1)
-```
+Raw per-frame activations flicker. Two stages stabilize them
+(`PluginProcessor::runDetector`):
 
-Single-sample autoregressive generation (no beam search), fixed quantization,
-pre-computed conditioning stack for real-time use.
+- **Noise gate.** The 24 kHz frame's RMS is compared to the `Gate` threshold; if
+  the instrument is below it, the activations are zeroed (so the chord decays
+  away instead of reading notes out of noise).
+- **Peak-hold with decay.** Each pitch class holds its peak and decays at
+  `0.97`/hop (~21 ms), so a strummed chord sustains smoothly instead of
+  stuttering as the note rings down.
 
-## 4. Style Modulation
+## 4. Voice: formant-preserving pitch shift
 
-User-facing parameters and how they map into the chain:
+### 4.1 Pitch shifter (`DSP/PitchShifter.h`)
 
-| Parameter          | Range            | Effect                                        |
-| ------------------ | ---------------- | --------------------------------------------- |
-| `StyleShift`       | 0 – 1            | Interpolate style vector source ↔ target      |
-| `TimbralBrightness`| −1 – +1          | High-frequency emphasis (EQ tilt)             |
-| `FormantShift`     | −12 – +12 st     | Multiply formant frequencies                  |
-| `PitchShift`       | −24 – +24 st     | Transposition (PSOLA-like time-stretch)       |
+A streaming phase vocoder (1024 FFT, 256 hop):
 
-All parameters are smoothed (see `Parameters/ParameterSmoothing.h`) to avoid
-zipper noise, then applied before the decoder.
+1. STFT the voice; estimate **instantaneous frequency** per bin from the phase
+   difference between hops.
+2. **Whiten** the spectral envelope (divide out a smoothed magnitude envelope)
+   so pitch can be changed independently of timbre.
+3. Re-bin to the target ratio, accumulate synthesis phase, then **re-apply the
+   original envelope** at the shifted pitch — this preserves formants, so the
+   shifted voice still sounds like the singer rather than a chipmunk.
 
-## 5. Streaming & Latency
+Latency = FFT size = 1024 samples at the host rate (~21 ms @ 48 kHz), reported
+to the host via `setLatencySamples`. Validated against the Python reference at
+corr ≈ 0.996.
 
-### Strategy
+### 4.2 Choir mapping (`PluginProcessor::collectTargets`)
 
-- **Resampler FIFOs** bridge host rate ↔ 24 kHz without drift.
-- **Circular buffers** for continuous input/output.
-- **Overlap-add** reconstruction rather than batch processing.
-- **RNN state management** so the GRU carries across frames.
-- **4-frame lookahead** absorbs vocoder transients.
-- **Latency compensation** reported to the host via
-  `AudioProcessor::setLatencySamples` (frame + lookahead, converted to host
-  samples, plus resampler group delay).
-
-### Latency budget (target 40–50 ms)
-
-| Stage                | Budget |
-| -------------------- | ------ |
-| Input buffering      | 10 ms  |
-| Down/up resampling   | 2 ms   |
-| STFT analysis        | 5 ms   |
-| Feature norm         | 2 ms   |
-| Encoder              | 8 ms   |
-| Decoder              | 9 ms   |
-| Vocoder              | 9 ms   |
-| Overlap-add          | 3 ms   |
-| Output delay         | 2 ms   |
-| **Total**            | **50 ms** |
-
-> Running inference at 24 kHz roughly halves the encoder/decoder/vocoder cost
-> versus 48 kHz; the resampler adds a small fixed overhead and group delay.
-
-See [`docs/REAL_TIME_OPTIMIZATION.md`](docs/REAL_TIME_OPTIMIZATION.md).
-
-## 6. Training Objective
-
-Reconstruction loss through the full pipeline:
+For each detected pitch class (strongest `Polyphony` of them), the target MIDI
+note is placed in the octave nearest the singer's current F0, ordered lead-first.
+Per voice, the pitch ratio is
 
 ```
-L = || vocoder(decoder(mel, encoder(mel))) − target ||²
+ratio = (targetHz / voiceHz) ^ Tune          # Tune: 0 = dry, 1 = full snap
 ```
 
-This jointly encourages (1) the encoder to learn meaningful style, (2) the
-decoder to reconstruct faithfully, and (3) the vocoder to produce clean audio.
+smoothed with a one-pole glide. Active voices are summed and equal-power
+normalized (`1/√N`). No chord (or unvoiced input) → silent output.
 
-**Evaluation metrics:**
+## 5. Parameters
 
-| Metric            | Target   | Meaning                       |
-| ----------------- | -------- | ----------------------------- |
-| Mel Cepstral Dist | < 5 dB   | Spectral similarity           |
-| F0 RMSE           | < 10 Hz  | Pitch contour preservation    |
-| Vocoder loss      | < 0.5 MSE| Audio reconstruction quality  |
+| Parameter   | Range          | Effect                                            |
+| ----------- | -------------- | ------------------------------------------------- |
+| `Tune`      | 0 – 1          | Natural blend → tight snap (T-Pain)               |
+| `Gate`      | −80 – −10 dB   | Instrument RMS threshold for the detector         |
+| `Polyphony` | 1 – 6          | Max simultaneous harmony voices (e.g. 6 = guitar) |
 
-## 7. Export to RTNeural
+All are exposed via `AudioProcessorValueTreeState` and smoothed on the audio
+thread to avoid zipper noise.
 
-1. Load trained PyTorch checkpoints.
-2. Trace to ONNX.
-3. Optimize (layer fusion, memory layout).
-4. Emit RTNeural JSON model files.
-5. Validate: numerically match PyTorch, measure latency, profile memory.
+## 6. Streaming & Latency
 
-See `training/export_rtneural.py` and [`docs/PLUGIN_BUILD.md`](docs/PLUGIN_BUILD.md).
+- **Sidechain FIFO** bridges host rate → 24 kHz without drift (`SampleFifo`).
+- **Detector** drains complete 2048-sample frames every 512-sample hop.
+- **Pitch shifters** are overlap-add streaming (no batch processing).
+- **No allocations or locks** on the audio thread; all scratch buffers are
+  pre-allocated in `prepareToPlay`.
+- **Reported latency** = pitch-shifter FFT size (1024 host-rate samples).
+
+The detector path is *not* in the audible latency budget — the voice is shifted
+continuously and simply follows the most recent detected chord.
+
+## 7. Training Objective
+
+ChordNet is trained as a multi-label classifier on synthesized chords
+(`training/chord_synth.py` renders chords with randomized timbre/voicing/level;
+`train_chord.py` optimizes):
+
+```
+L = BCE( sigmoid(ChordNet(feature)), chord_pitch_class_targets )
+```
+
+**Evaluation:** per-pitch-class precision / recall / F1 on held-out synthetic
+chords (current best F1 ≈ 0.996).
+
+## 8. Export to RTNeural
+
+1. Train ChordNet (PyTorch).
+2. Export dense weights to the `.rtneural` JSON consumed by `NNModel`.
+3. Write `chord_info.json` (feature dims, `n_fft`, `sample_rate`, `midi_lo/hi`,
+   baked `logfreq_fb`).
+4. Validate: C++ `NNModel` output matches PyTorch within tolerance (~1.8e-7).
+
+See `training/export_chord.py` and [`docs/PLUGIN_BUILD.md`](docs/PLUGIN_BUILD.md).

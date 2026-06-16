@@ -1,26 +1,34 @@
 # CPU Usage Analysis
 
-Measured with `Utilities/Performance.h` (`ScopedTimer` per stage) at 48 kHz,
-512-sample blocks. Populate after the first end-to-end build.
+Measured in the Standalone host at 48 kHz, 512-sample blocks, with a looped
+vocal on the main input and an instrument on the sidechain.
 
-## Target
+## What drives CPU
 
-< 25 % of one core on a modern 4-core processor (2021+).
+| Stage                  | Cost driver                                          |
+| ---------------------- | --------------------------------------------------- |
+| Voice pitch shifters   | **dominant** — one phase vocoder per active voice (scales with Polyphony) |
+| Voice F0 (YIN)         | per-block difference function on a rolling window    |
+| Detector feature + net | 2048-pt FFT @ 24 kHz every hop + a tiny dense net    |
+| Sidechain SRC          | Lagrange resampler (host → 24 kHz)                   |
+
+The harmony voices are the hot path: CPU scales roughly linearly with the
+**Polyphony** setting and how many chord tones are actually active.
 
 ## Methodology
 
 1. Build the plugin in Release.
-2. Run in the Standalone host with a looped speech file.
-3. Sample per-stage timings into `latency_measurements.csv`.
-4. Sample total process CPU via OS tools (`Activity Monitor` / `perf` / Task Manager).
+2. Run the Standalone host; route a looped instrument to the sidechain.
+3. Sweep **Polyphony** 1 → 6 and record process CPU (Activity Monitor / `perf` /
+   Task Manager) at each setting.
 
 ## Results
 
-| Configuration         | CPU % | Notes        |
-| --------------------- | ----- | ------------ |
-| FP32, single-thread   | _TBD_ |              |
-| FP32, vocoder thread  | _TBD_ | safety buffer |
-| INT8                  | _TBD_ | optional     |
+| Polyphony | Active voices | CPU % | Notes |
+| --------- | ------------- | ----- | ----- |
+| 1         | bass line     | _TBD_ |       |
+| 4         | typical chord | _TBD_ | default |
+| 6         | full guitar   | _TBD_ | worst case |
 
 ## Observations
 

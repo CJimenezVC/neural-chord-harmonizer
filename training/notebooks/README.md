@@ -1,13 +1,13 @@
 # Notebooks
 
-Exploratory and reporting notebooks. Keep heavy computation in the `.py`
-modules; notebooks should call into them.
+Exploratory and reporting notebooks for the Chord Harmonizer. Keep heavy
+computation in the `.py` modules; notebooks should call into them.
 
-| Notebook                          | Purpose                                          |
-| --------------------------------- | ------------------------------------------------ |
-| `exploratory_data_analysis.ipynb` | Inspect VCC2020/CMU Arctic: durations, F0 ranges, mel stats |
-| `model_training.ipynb`            | Interactive training runs, loss curves, ablations |
-| `evaluation_metrics.ipynb`        | MCD / F0 RMSE analysis, before/after spectrograms |
+| Notebook                          | Purpose                                                  |
+| --------------------------------- | -------------------------------------------------------- |
+| `chord_feature_eda.ipynb`         | Inspect synthesized chords: log-freq features, label balance, timbre variety |
+| `model_training.ipynb`            | Interactive ChordNet runs, loss/F1 curves, ablations     |
+| `evaluation_metrics.ipynb`        | Per-pitch-class precision / recall / F1, confusion across chord qualities |
 
 > Notebooks are gitignored at the checkpoint level (`.ipynb_checkpoints/`).
 > Commit cleared-output notebooks to keep diffs small.

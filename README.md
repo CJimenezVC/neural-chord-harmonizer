@@ -1,55 +1,60 @@
-# Adaptive Voice Transform
+# Chord Harmonizer
 
-**Real-time neural style transfer voice plugin.** Continuously control timbre,
-pitch, and resonance with a hybrid DSP-neural architecture built on
+**Real-time chord-following vocal harmonizer / auto-tune plugin.** A sidechain
+instrument (guitar, bass, or piano) drives a neural polyphonic pitch-class
+detector; the main vocal input is pitch-shifted — formant-preserving — onto the
+tones of the detected chord, producing a live, chord-aware **choir**. Built on
 [JUCE](https://juce.com/) and [RTNeural](https://github.com/jatinchowdhury18/RTNeural).
 
-Rather than end-to-end voice conversion, Adaptive Voice Transform implements a
-**differentiable DSP chain**: deterministic DSP extracts pitch and formants,
-lightweight neural networks learn and apply voice style transformations, and
-real-time parameters modulate the style continuously — all at sub-50 ms latency
-suitable for DAW use.
+The neural network is the *listening* half: it transcribes whatever the
+instrument is playing into 12 pitch-class activations in real time. The DSP is
+the *singing* half: a bank of formant-preserving phase-vocoder pitch shifters
+re-voices the singer onto those notes. A single **Tune** control sweeps from
+natural harmony to hard-snap (T-Pain) auto-tune.
 
 ## Features
 
-- Real-time voice transformation (~40–50 ms latency)
-- Independent, continuous control over style, timbre, formants, and pitch
-- VST3 / AU plugin for DAW integration
-- Multi-speaker conversion trained on VCC2020 + CMU Arctic
-- Streaming WaveRNN vocoder optimized for RTNeural
+- Real-time, chord-following vocal harmony driven by a sidechain instrument
+- Neural **polyphonic** pitch-class detector (ChordNet) — guitar/bass/piano chords
+- Formant-preserving phase-vocoder pitch shifting (the voice stays the voice)
+- **Choir** mode: one harmony voice per detected chord tone (up to 6)
+- **Tune** (natural → tight), **Gate** (instrument noise gate), **Polyphony** (1–6)
+- VST3 / AU / Standalone for DAW integration
 
 ## Architecture at a Glance
 
 ```
-Input (host rate, e.g. 48 kHz)
-  → Downsample to 24 kHz
-  → Feature Extraction (STFT, mel-spectrogram, YIN F0, formants)
-  → Neural Encoder (mel → 64-dim style vector)
-  → Style Modulation (user parameter interpolation)
-  → Neural Decoder ((mel, style) → transformed mel)
-  → WaveRNN Vocoder (mel → waveform)
-  → Post-DSP refinement (overlap-add, artifact suppression)
-  → Upsample to host rate
-Output (host rate, ~40 ms latency)
+Sidechain instrument (host rate)        Main voice (host rate)
+  → Downsample to 24 kHz                  → YIN F0 (pitch tracking)
+  → Log-freq feature (61 semitone bins)   │
+  → ChordNet (→ 12 pitch-class probs)     │
+  → Peak-hold + noise gate                │
+  → detected chord ───────────────────────┤
+                                          ▼
+                          Choir: for each chord tone, a
+                          formant-preserving phase-vocoder
+                          pitch shift of the voice → sum
+                                          ▼
+                              Output (host rate)
 ```
 
-The neural models run at **24 kHz** (VCC2020's native rate) to halve compute;
-the plugin resamples to/from the host rate around the neural chain.
+The **detector** runs at a fixed **24 kHz** (its trained feature rate); the
+**voice path** runs at the host rate. When no chord is detected (or the
+instrument is below the gate), the output is silent.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`TECHNICAL.md`](TECHNICAL.md)
 for the detailed design.
 
 ## Repository Layout
 
-| Path          | Contents                                              |
-| ------------- | ----------------------------------------------------- |
-| `training/`   | Python training pipeline (PyTorch → RTNeural export)  |
-| `plugin/`     | JUCE VST3/AU plugin (C++)                              |
-| `models/`     | Trained checkpoints and RTNeural exports              |
-| `benchmarks/` | Latency / CPU / memory measurements                   |
-| `data/`       | Datasets, preprocessed features, splits               |
-| `scripts/`    | Automation (download, preprocess, train, export, build) |
-| `docs/`       | Architecture, training, build, and DSP documentation  |
+| Path          | Contents                                                |
+| ------------- | ------------------------------------------------------- |
+| `training/`   | Python training pipeline (synthetic chords → RTNeural)  |
+| `plugin/`     | JUCE VST3/AU/Standalone plugin (C++)                    |
+| `models/`     | Trained ChordNet + RTNeural export                      |
+| `bindings/`   | pybind11 binding exposing the C++ DSP feature to Python |
+| `benchmarks/` | Latency / CPU / memory measurements                     |
+| `docs/`       | Architecture, training, build, and DSP documentation    |
 
 ## Quick Start
 
@@ -57,68 +62,62 @@ for the detailed design.
 
 ```bash
 # Prerequisites: CMake >= 3.22, a C++20 compiler
-git clone https://github.com/yourusername/adaptive-voice-transform.git
+git clone https://github.com/CJimenezVC/adaptive-voice-transform.git
 cd adaptive-voice-transform
 
 # JUCE and RTNeural are pulled automatically via CMake FetchContent
 ./scripts/build_plugin.sh
 ```
 
-Output artifacts:
-- `adaptive-voice-transform.vst3`
-- `adaptive-voice-transform.component` (macOS AU)
+### Run it
 
-### Train your own model
+1. Load the plugin on your **vocal** track.
+2. Route a melodic instrument (guitar/bass/piano) to the plugin's **sidechain**.
+3. Click **Load Models...** and select `models/pretrained/`.
+4. Play a chord on the instrument and sing — the voice follows the chord.
+
+Controls: **Tune** (0 = natural blend, 1 = tight snap), **Gate** (instrument
+detection threshold), **Polyphony** (max simultaneous harmony notes, e.g. 6 for
+a full guitar chord).
+
+### Train your own detector
+
+No external dataset required — the detector trains on **synthesized** chords:
 
 ```bash
 cd training
 pip install -r requirements.txt
-../scripts/download_datasets.sh
-../scripts/preprocess_data.sh
-../scripts/train.sh
-../scripts/export_models.sh
+python train_chord.py     # trains ChordNet on synthetic chords (Apple MPS / CPU)
+python export_chord.py    # -> models/pretrained/chordnet.rtneural + chord_info.json
 ```
 
 See [`docs/TRAINING_GUIDE.md`](docs/TRAINING_GUIDE.md) for the full walkthrough.
 
-## Performance Targets
+## Validation
 
-| Metric  | Target                          |
-| ------- | ------------------------------- |
-| Latency | 40–50 ms                        |
-| CPU     | < 25 % (modern 4-core)          |
-| Memory  | ~200 MB resident                |
-| Params  | ~500 K (encoder + decoder + vocoder) |
+Every piece of the chain is validated against its Python reference:
 
-## Status
+| Component                  | Check                              | Result        |
+| -------------------------- | ---------------------------------- | ------------- |
+| Log-freq feature (C++)     | vs `training/chord_synth.py`       | ~3.4e-5       |
+| ChordNet RTNeural export   | vs PyTorch                         | ~1.8e-7       |
+| Formant-preserving shifter | corr vs Python reference           | ~0.996        |
+| ChordNet detection         | F1 on held-out synthetic chords    | ~0.996        |
 
-🚧 **Working pipeline, early model.**
+The training feature is computed by the plugin's **exact C++ DSP** via a
+pybind11 binding (`bindings/`), so there is no Python/C++ feature drift.
 
-- ✅ DSP front end (STFT/mel/YIN/formants), streaming buffers, host↔24 kHz resampling
-- ✅ Python training pipeline; trains on Apple MPS (CPU fallback)
-- ✅ RTNeural export + self-contained C++ inference engine (`NNModel`), validated
-  against PyTorch to ~1e-8; load models via the editor's **Load Models...** button
-  or `$AVT_MODELS_DIR`
-- ✅ Feature parity: training preprocessing calls the plugin's **exact C++ DSP**
-  via a pybind11 binding (`bindings/`), so there is no Python/C++ feature drift.
-- ✅ Audible output path: **envelope-ratio filter** — the decoder's spectral
-  envelope is applied as a smooth, time-varying gain on the *input's* magnitude
-  and phase (phase-coherent → no static), reshaping timbre/formants while
-  preserving the voice's pitch/harmonics. `corr(in, out) ≈ 0.997` offline.
-- ✅ Controls (all wired): **Style Shift** (style blend), **Brightness** (±12 dB
-  tilt), **Formant** (spectral-envelope warp). No Pitch control — true pitch
-  shifting needs a phase vocoder (separate resynthesis path).
-- ⚠️ It's a timbre/formant transform, not full speaker conversion (no target
-  embedding); the WaveRNN head is unused. A neural vocoder + target-speaker
-  conditioning is the path to real voice conversion.
+> **Legacy:** an earlier neural voice-conversion engine ("Adaptive Voice
+> Transform") lives in the tree (`ML/Encoder|Decoder|VocoderNetwork`,
+> `DSP/FeatureExtractor`, etc.). It is **deprecated** and not built into the
+> current plugin target; the harmonizer is the active product.
 
 ## References
 
 - YIN pitch detection — de Cheveigné & Kawahara (2002)
-- WaveRNN vocoder — Kalchbrenner et al. (2018)
+- Phase-vocoder pitch shifting — Laroche & Dolson (1999)
 - [RTNeural](https://github.com/jatinchowdhury18/RTNeural)
 - [JUCE](https://juce.com/)
-- [Voice Conversion Challenge 2020 database](https://github.com/nii-yamagishilab/VCC2020-database)
 
 ## License
 

@@ -1,67 +1,69 @@
 # Real-Time Optimization
 
-Strategies used to keep total latency in the 40–50 ms range and CPU under ~25 %
-on a modern 4-core processor.
+Strategies used to keep the Chord Harmonizer responsive and light on CPU.
 
-## Latency Budget
+## Where the latency is
 
-| Stage              | Budget | Source of cost                       |
-| ------------------ | ------ | ------------------------------------ |
-| Input buffering    | 10 ms  | 512-sample frame @ 24 kHz (~21 ms window, hop-paced) |
-| Down/up resampling | 2 ms   | Lagrange SRC host ↔ 24 kHz + group delay |
-| STFT analysis      | 5 ms   | 512-point FFT @ 24 kHz               |
-| Feature norm       | 2 ms   | memory bandwidth                     |
-| Encoder            | 8 ms   | 150 K params @ 24 kHz                |
-| Decoder            | 9 ms   | 200 K params @ 24 kHz                |
-| Vocoder            | 9 ms   | autoregressive GRU @ 24 kHz          |
-| Overlap-add        | 3 ms   | windowing + sum                      |
-| Output delay       | 2 ms   | ring buffer                          |
-| **Total**          | **50 ms** |                                   |
+The only latency in the **audible** path is the voice pitch shifter's analysis
+window. The detector path adds no audible delay — the voice is shifted
+continuously and simply follows the most recent detected chord.
 
-Inference at 24 kHz (instead of 48 kHz) roughly halves the per-frame neural
-cost; the resampler trades a small fixed overhead for that saving. Report the
-true value to the host with `setLatencySamples()` so the DAW can compensate.
+| Stage                  | Latency / cost                                   |
+| ---------------------- | ------------------------------------------------ |
+| Voice pitch shift      | 1024-sample FFT @ host rate (~21 ms @ 48 kHz) ← reported to host |
+| Voice F0 (YIN)         | per-block, on a rolling window                   |
+| Sidechain → 24 kHz SRC | Lagrange resampler + small FIFO (not in voice path) |
+| Detector feature       | 2048-pt FFT @ 24 kHz, every 512-sample hop       |
+| ChordNet forward       | 3 dense layers (61→256→256→12) — negligible      |
 
-## 1. Model Compression
+Report the true value to the host with `setLatencySamples()` (the pitch-shifter
+FFT size) so the DAW can compensate.
 
-- **Pruning** — remove low-magnitude connections (target < 5 % accuracy loss).
-- **Knowledge distillation** — train a smaller student against the full model.
-- **Quantization** — INT8 inference where the measured loss stays < 1 dB MCD.
+## 1. Keep the voice path at host rate
 
-## 2. Streaming Inference
+Resampling only the **sidechain** (not the voice) means the audible signal never
+passes through a rate converter — no SRC artifacts on the harmony, and the
+pitch shifter's latency is the only reported delay.
 
-- Overlap-add instead of batch processing.
-- Persist RNN state across frames (`VocoderNetwork` carries the GRU hidden state).
-- Pre-compute the vocoder conditioning stack once per frame.
+## 2. Cheap detector
 
-## 3. SIMD / Multithreading
+- ChordNet is dense-only and tiny; a forward pass is a few matrix-vector
+  products. No recurrence, no autoregression.
+- The detector runs at 24 kHz with a 512-sample hop (~187 frames/s), far below
+  the audio block rate, and drains a FIFO rather than blocking.
 
-- SIMD FFT (KISS FFT / FFTW / `juce::dsp::FFT`).
-- Optional worker thread for the vocoder feeding a safety buffer (lock-free).
-- Lock-free ring buffers for cross-thread communication.
+## 3. Streaming, allocation-free DSP
 
-## 4. Memory Management
+- Overlap-add streaming pitch shifters (`PitchShifter`), not batch processing.
+- Pre-allocate **all** buffers in `prepareToPlay`; never `new`/`malloc` on the
+  audio thread.
+- Reuse scratch arrays across the per-voice loop.
 
-- Pre-allocate **all** buffers in `prepareToPlay`.
-- Reuse scratch arrays; never `new`/`malloc` on the audio thread.
-- Cache-aligned data structures for hot inner loops.
+## 4. Polyphony scales the cost
+
+Each harmony voice is an independent phase-vocoder pitch shifter. CPU scales with
+the **Polyphony** setting (and how many chord tones are active): 1 voice for a
+bass line is far cheaper than 6 voices for a full guitar chord. Idle voices
+still run their shifter but are not summed — set Polyphony to your instrument's
+realistic chord size.
+
+## 5. SIMD / threading (optional)
+
+- `SimpleFFT` is a clear radix-2 implementation; swap in `juce::dsp::FFT` or an
+  optimized FFT if profiling shows the transforms dominate.
+- Lock-free FIFOs already isolate the message thread (model load, chord readout)
+  from the audio thread.
 
 ## Measuring
 
-Use `Utilities/Performance.h` to time each stage and dump to
-`benchmarks/latency_measurements.csv`:
-
-```cpp
-ScopedTimer t{ "encoder" };   // RAII; logs elapsed µs on scope exit
-```
-
-Aggregate with `scripts/` tooling and record findings in
-[`../benchmarks/cpu_usage_analysis.md`](../benchmarks/cpu_usage_analysis.md).
+Profile in the Standalone host with a looped vocal + instrument, and record
+findings in [`../benchmarks/cpu_usage_analysis.md`](../benchmarks/cpu_usage_analysis.md)
+and [`../benchmarks/memory_footprint.md`](../benchmarks/memory_footprint.md).
 
 ## Checklist before release
 
 - [ ] No allocations on the audio thread (verify with a RT allocator hook).
-- [ ] `setLatencySamples` matches measured latency.
-- [ ] CPU < 25 % at 48 kHz / 512-sample blocks.
+- [ ] `setLatencySamples` matches the pitch-shifter FFT size.
+- [ ] CPU acceptable at max Polyphony (6 voices) at 48 kHz / 512-sample blocks.
 - [ ] `pluginval` strictness 8 passes.
-- [ ] No denormals (enable FTZ/DAZ).
+- [ ] No denormals (enable FTZ/DAZ via `ScopedNoDenormals`).

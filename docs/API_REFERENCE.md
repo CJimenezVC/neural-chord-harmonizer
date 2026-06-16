@@ -1,140 +1,105 @@
 # C++ API Reference
 
-Interface-level documentation for the plugin's core classes. Signatures mirror
-the headers under `plugin/Source/`. Implementations are in progress; this
-documents the intended contract.
+Interface-level documentation for the Chord Harmonizer's core classes.
+Signatures mirror the headers under `plugin/Source/`.
 
 ## DSP
 
-### `FeatureExtractor`
+### `LogFreqFeature` (`DSP/LogFreqFeature.h`)
+Log-frequency (one-bin-per-semitone) spectrogram feature for the detector.
+JUCE-free (`SimpleFFT` + a baked filterbank), level-invariant, and a bit-for-bit
+match to `training/chord_synth.py` (validated to ~3.4e-5).
 ```cpp
-struct Features {
-    std::vector<float> mel;       // 128 bins
-    float f0 = 0.0f;              // Hz
-    std::array<float, 4> formants{};
-    float voicedConfidence = 0.0f;
-};
-
-void  prepare(double sampleRate, int frameSize, int hopSize);
-Features process(const float* frame, int numSamples);
-void  reset();
+void prepare(int fftSize);
+void setFilterbank(const float* fb, int nPitch, int nBins);  // from chord_info.json
+int  getNumPitch() const noexcept;
+// unit-RMS normalize → Hann → FFT → |·| → filterbank → log; writes nPitch values
+void compute(const float* frame, int numSamples, float* out);
 ```
 
-### `YINPitchDetector`
+### `PitchShifter` (`DSP/PitchShifter.h`)
+Streaming, formant-preserving phase-vocoder pitch shifter. JUCE-free
+(`SimpleFFT` + `SampleFifo` + `OverlapAddBuffer`). Validated vs the Python
+reference at corr ≈ 0.996.
 ```cpp
-void  prepare(double sampleRate, int bufferSize);
+void prepare(int fftSize, int hop);     // 1024 / 256 in the plugin
+void setRatio(float ratio);             // target / source pitch ratio
+void process(const float* in, float* out, int numSamples);  // streaming
+int  getLatencySamples() const;         // == fftSize
+void reset();
+```
+
+### `YINPitchDetector` (`DSP/YINPitchDetector.h`)
+```cpp
+void prepare(double sampleRate, int bufferSize);
 // Returns {f0Hz, confidence in [0,1]}
 std::pair<float, float> detect(const float* buffer, int numSamples);
-void  setThreshold(float t);          // default 0.1
 ```
 
-### `FormantAnalyzer`
+### `Resampler` / `SampleFifo` (`DSP/`)
 ```cpp
-void  prepare(double sampleRate, int order);   // LPC order
-std::array<float, 4> estimate(const float* frame, int numSamples);
+// Resampler: arbitrary-ratio SRC (Lagrange) used for sidechain host → 24 kHz
+void prepare(double inRate, double outRate);
+void process(const float* in, float* out, int numOut);
+// SampleFifo: lock-free single-thread FIFO feeding the detector
+void  push(const float* src, int n);   int size() const;
+const float* data() const;             void consume(int n);
 ```
 
-### `OverlapAddBuffer` / `CircularAudioBuffer`
+### `SimpleFFT` (`DSP/SimpleFFT.h`)
+JUCE-free in-place radix-2 complex FFT, so the DSP compiles identically into the
+plugin and the standalone unit tests.
 ```cpp
-void  prepare(int frameSize, int hopSize, int channels);
-void  add(const float* frame, int numSamples);   // OLA accumulate
-int   read(float* dst, int numSamples);          // pop reconstructed audio
-// CircularAudioBuffer:
-void  push(const float* src, int numSamples);
-bool  pop(float* dst, int frameSize, int hopSize);
+void prepare(int fftSize);
+void transform(float* re, float* im, bool inverse);
 ```
 
 ## ML
 
-### `ModelManager`
-```cpp
-bool  loadFromDirectory(const juce::File& dir);  // encoder/decoder/vocoder + info
-bool  isLoaded() const noexcept;
-EncoderNetwork&  encoder() noexcept;
-DecoderNetwork&  decoder() noexcept;
-VocoderNetwork&  vocoder() noexcept;
-const ModelInfo& info() const noexcept;          // norm stats, dims
-```
-
-### `NNModel` (+ `NNMath.h`)
+### `NNModel` (+ `NNMath.h`) (`ML/`)
 Self-contained feed-forward engine that loads an exported `.rtneural` JSON file
-and runs a single-frame (streaming) forward pass. Supported layers: dense,
-conv1d (single-frame centre tap), global_mean_pool (identity for one frame),
-gru (state carried across calls). The math lives in the JUCE-free `NNMath.h`
-and is unit-tested (`Tests/test_nn.cpp`) and validated against PyTorch to ~1e-8
-(`training/verify_rtneural_export.py`).
+and runs a forward pass. Supported layers: dense, ReLU, sigmoid. JUCE-free math
+in `NNMath.h`, unit-tested (`Tests/test_nn.cpp`) and validated against PyTorch to
+~1e-8.
 ```cpp
-bool  loadFromFile(const juce::File& jsonFile);
-void  forward(const float* input, int inputLen, float* out);  // carries GRU state
-void  reset();
-int   inputSize() const noexcept;   int outputSize() const noexcept;
+bool loadFromFile(const juce::File& jsonFile);
+void forward(const float* input, int inputLen, float* out);
+int  inputSize() const noexcept;   int outputSize() const noexcept;
+void reset();
 ```
 
-> A single-frame conv1d with `padding=1, kernel=3` reduces exactly to the centre
-> kernel tap — which is why the streaming path is correct without buffering past
-> frames (the ±1 temporal taps are unused in this mode).
-
-### `EncoderNetwork` / `DecoderNetwork` / `VocoderNetwork`
-Thin wrappers over `NNModel`:
+### `ChordDetector` (`ML/ChordDetector.h`)
+Wraps `LogFreqFeature` + `NNModel` into the polyphonic pitch-class detector.
 ```cpp
-bool  loadModel(const juce::File& jsonFile);     // all three
-void  EncoderNetwork::encode(const float* mel, int numFrames, float* styleOut);
-void  DecoderNetwork::decode(const float* melFrame, const float* style, float* melOut);
-int   VocoderNetwork::synthesize(const float* melFrame, float* audioOut, int maxSamples);
-void  VocoderNetwork::reset();   // clear recurrent state
-```
-
-> **Audio path:** the trained WaveRNN head emits one categorical value *per mel
-> frame* (frame-rate), which cannot synthesize speech, so it is **bypassed** for
-> output. Instead `NeuralAudioProcessor` resynthesizes audio from the decoder's
-> transformed mel via **mel inversion**: denormalize → `exp` → diagonal
-> inverse-mel → combine with the *input frame's phase* → ISTFT → overlap-add
-> (`SpectrogramProcessor::melToFrame`). This conveys the transformed spectral
-> envelope; because it reuses the input phase, pitch/phase changes are not
-> rendered. A neural vocoder is the next quality step.
-
-### `NeuralAudioProcessor`
-```cpp
-void  prepare(double sampleRate, int frameSize);
-void  setModels(ModelManager* models) noexcept;
-void  setStyleParams(const StyleParams& p) noexcept;  // real-time safe
-// Full encode → modulate → decode → vocode for one frame
-int   processFrame(const Features& feats, float* audioOut, int maxSamples);
-```
-
-## Parameters
-
-### `StyleInterpolation`
-```cpp
-struct StyleParams {
-    float styleShift = 0.0f;       // [0,1]
-    float brightness = 0.0f;       // [-1,1]
-    float formantShift = 0.0f;     // semitones [-12,12]
-    float pitchShift = 0.0f;       // semitones [-24,24]
-};
-void apply(const float* sourceStyle, const float* targetStyle,
-           const StyleParams& p, float* styleOut, int styleDim);
+// Loads chordnet.rtneural + chord_info.json (dims, n_fft, midi range, filterbank)
+bool load(const juce::File& chordnetFile, const juce::File& chordInfoFile);
+bool isLoaded() const noexcept;
+int  getFftSize() const noexcept;   // detector frame size (2048)
+int  getMidiLo() const noexcept;    int getMidiHi() const noexcept;
+// feature.compute → net.forward (sigmoid); writes 12 pitch-class activations
+void detect(const float* frame, int numSamples, float* pc12);
 ```
 
 ## Host Integration
 
-### `PluginProcessor : juce::AudioProcessor`
-Standard JUCE lifecycle: `prepareToPlay`, `processBlock`, `releaseResources`,
-state save/load via `AudioProcessorValueTreeState`. Reports latency via
-`setLatencySamples`.
-
+### `AdaptiveVoiceTransformProcessor : juce::AudioProcessor`
+Standard JUCE lifecycle (`prepareToPlay`, `processBlock`, `releaseResources`,
+APVTS state save/load). Declares a stereo main I/O plus a **sidechain** input
+bus. Reports the pitch-shifter latency via `setLatencySamples`.
 ```cpp
-// Load RTNeural models and re-prepare at the model's sample rate
-// (read from model_info.json). Suspends processing during the swap;
-// safe to call while playing.
-bool loadModels (const juce::File& dir);
+bool loadModels(const juce::File& dir);     // chordnet.rtneural + chord_info.json
+bool modelsLoaded() const noexcept;
+int  getChordMask() const noexcept;         // 12-bit mask of detected pitch classes
+juce::AudioProcessorValueTreeState& getValueTreeState() noexcept;
 ```
+Parameters (APVTS): `tune` (0–1), `gate` (−80…−10 dB), `polyphony` (int 1–6).
 
-The neural chain runs at `model_info.json`'s `sample_rate` (24 kHz by default).
-`prepareToPlay` adopts that rate if models are already loaded; `loadModels`
-re-prepares the resamplers/buffers if models arrive later. The host stream is
-resampled to/from this rate (see `DSP/Resampler.h`).
+Private helpers: `runDetector()` drains the sidechain FIFO and updates the held
+chord; `collectTargets(voiceHz, midiOut)` selects the strongest `Polyphony`
+chord tones near the voice and orders them lead-first.
 
-### `PluginEditor : juce::AudioProcessorEditor`
-Hosts `StyleKnob`, brightness/formant/pitch sliders, `PresetManager`, and two
-`SpectrumAnalyzer` views (before/after).
+### `AdaptiveVoiceTransformEditor : juce::AudioProcessorEditor`
+Hosts the **Tune**, **Gate**, and **Polyphony** knobs, a live 12-note chord
+readout (polled from `getChordMask` via a `Timer`), a **Load Models...** button,
+and a model-status label. All UI strings are ASCII-only (JUCE's
+`juce::String(const char*)` asserts on bytes > 127).

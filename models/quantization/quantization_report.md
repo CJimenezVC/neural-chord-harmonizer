@@ -1,23 +1,22 @@
 # Quantization Report
 
-Tracks accuracy impact of post-training quantization for RTNeural deployment.
-Populated by `training/export_rtneural.py` once a trained model is available.
+Tracks the accuracy impact of post-training quantization of **ChordNet** for
+RTNeural deployment. Optional — ChordNet is small enough that FP32 is the
+default and quantization is rarely needed.
 
 ## Method
 
-- **Baseline:** FP32 inference (matches PyTorch).
+- **Baseline:** FP32 inference (matches PyTorch to ~1.8e-7).
 - **Candidate:** INT8 weights/activations with per-channel scales.
-- **Acceptance:** measured MCD increase < 1 dB vs FP32.
+- **Acceptance:** detection **F1** drop < 0.005 vs FP32 on held-out synthetic
+  chords.
 
 ## Results
 
-| Model    | FP32 MCD (dB) | INT8 MCD (dB) | Δ (dB) | Size FP32 | Size INT8 |
-| -------- | ------------- | ------------- | ------ | --------- | --------- |
-| encoder  | _TBD_         | _TBD_         | _TBD_  | _TBD_     | _TBD_     |
-| decoder  | _TBD_         | _TBD_         | _TBD_  | _TBD_     | _TBD_     |
-| vocoder  | _TBD_         | _TBD_         | _TBD_  | _TBD_     | _TBD_     |
+| Model    | FP32 F1 | INT8 F1 | Δ F1  | Size FP32 | Size INT8 |
+| -------- | ------- | ------- | ----- | --------- | --------- |
+| chordnet | ~0.996  | _TBD_   | _TBD_ | _TBD_     | _TBD_     |
 
-See `accuracy_loss_analysis.csv` for per-layer detail.
-
-> Current default ships **FP32** (no quantization loss). INT8 is an optional
-> optimization path documented in `docs/REAL_TIME_OPTIMIZATION.md`.
+> Current default ships **FP32** (no quantization loss). The dense ChordNet is
+> tiny, so INT8 is generally unnecessary; it remains an optional path documented
+> in `docs/REAL_TIME_OPTIMIZATION.md`.

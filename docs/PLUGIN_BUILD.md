@@ -35,23 +35,38 @@ cmake --build build --config Release -j
 
 ### Output
 
-| Format | Path (relative to `plugin/build`)                                  |
-| ------ | ------------------------------------------------------------------ |
-| VST3   | `AdaptiveVoiceTransform_artefacts/Release/VST3/*.vst3`             |
-| AU     | `AdaptiveVoiceTransform_artefacts/Release/AU/*.component` (macOS)  |
-| Standalone | `AdaptiveVoiceTransform_artefacts/Release/Standalone/*`        |
+| Format     | Path (relative to `plugin/build`)                                 |
+| ---------- | ----------------------------------------------------------------- |
+| VST3       | `AdaptiveVoiceTransform_artefacts/Release/VST3/*.vst3`            |
+| AU         | `AdaptiveVoiceTransform_artefacts/Release/AU/*.component` (macOS) |
+| Standalone | `AdaptiveVoiceTransform_artefacts/Release/Standalone/*`           |
 
-## Installing the models
+> The CMake target and bundle ID still carry the legacy
+> `AdaptiveVoiceTransform` name; the product is the Chord Harmonizer.
 
-The plugin loads RTNeural models from a known location. Place exports at:
+## Installing the model
+
+The plugin loads the detector from a folder containing:
 
 ```
-models/pretrained/{encoder,decoder,vocoder}.rtneural
-models/pretrained/model_info.json
+models/pretrained/chordnet.rtneural
+models/pretrained/chord_info.json
 ```
 
-These can be bundled into the plugin as binary data (see `CMakeLists.txt`,
-`juce_add_binary_data`) or loaded from disk at runtime.
+Load it at runtime via the editor's **Load Models...** button, or point the
+`AVT_MODELS_DIR` environment variable at the folder to auto-load on startup.
+
+## Routing the sidechain
+
+The plugin declares a **sidechain input bus** in addition to the main vocal I/O.
+In your DAW:
+
+1. Insert the plugin on the **vocal** track.
+2. Route a melodic instrument (guitar/bass/piano) to the plugin's sidechain
+   input (the exact UI for this is host-specific — "Side-chain" in Logic/Ableton,
+   an extra input bus in Reaper, etc.).
+3. The instrument drives chord detection; the vocal is the signal that gets
+   harmonized.
 
 ## Validating the plugin
 
@@ -65,10 +80,15 @@ pluginval --strictness-level 8 path/to/AdaptiveVoiceTransform.vst3
 
 ## Unit tests
 
+The JUCE-free DSP primitives have a standalone test target (no JUCE required):
+
 ```bash
-cmake -B build -DAVT_BUILD_TESTS=ON
-cmake --build build
-ctest --test-dir build --output-on-failure
+cd plugin/Tests
+clang++ -std=c++20 -I../Source -O2 \
+    test_main.cpp test_dsp.cpp test_nn.cpp ../Source/DSP/OverlapAddBuffer.cpp \
+    -o /tmp/avt_tests && /tmp/avt_tests
 ```
+
+or via CMake/CTest if the test target is enabled.
 
 See [`REAL_TIME_OPTIMIZATION.md`](REAL_TIME_OPTIMIZATION.md) for performance tuning.
