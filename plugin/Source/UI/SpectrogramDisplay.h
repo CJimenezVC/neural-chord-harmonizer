@@ -106,44 +106,41 @@ private:
 
     void drawChordOverlay (juce::Graphics& g, juce::Rectangle<float> r)
     {
-        static const char* names[12] =
-            { "C","C#","D","D#","E","F","F#","G","G#","A","A#","B" };
         const float rowH = r.getHeight() / (float) numBins;
 
+        // Highlight every row whose pitch class is in the detected chord.
         for (int bin = 0; bin < numBins; ++bin)
         {
             const int pc = (lowMidi + bin) % 12;
             if ((chordMask & (1 << pc)) == 0) continue;
-
-            // Flipped: row 0 (low pitch) at the bottom.
-            const float y = r.getBottom() - (float) (bin + 1) * rowH;
-            g.setColour (juce::Colour (0xff2dffb0).withAlpha (0.18f));
+            const float y = r.getBottom() - (float) (bin + 1) * rowH;   // flipped
+            g.setColour (juce::Colour (0xff2dffb0).withAlpha (0.16f));
             g.fillRect (r.getX(), y, r.getWidth(), rowH);
         }
 
-        // Note tags for active pitch classes, down the right edge (one per pc).
-        g.setFont (juce::Font (12.0f, juce::Font::bold));
-        for (int pc = 0; pc < 12; ++pc)
+        // Octave reference axis on the left: a faint guide + "C<n>" at each C.
+        // (C rows are 12 semitones apart, so the labels never collide.)
+        g.setFont (juce::Font (10.0f));
+        for (int bin = 0; bin < numBins; ++bin)
         {
-            if ((chordMask & (1 << pc)) == 0) continue;
-            // highest occurrence of this pc within range -> a stable label slot
-            int topBin = -1;
-            for (int bin = 0; bin < numBins; ++bin)
-                if ((lowMidi + bin) % 12 == pc) topBin = bin;
-            if (topBin < 0) continue;
-            const float y = r.getBottom() - (float) (topBin + 1) * rowH;
-            juce::Rectangle<float> tag (r.getRight() - 26.0f, y - 7.0f, 24.0f, 16.0f);
-            g.setColour (juce::Colour (0xcc101820));
-            g.fillRoundedRectangle (tag, 3.0f);
-            g.setColour (juce::Colour (0xff2dffb0));
-            g.drawText (names[pc], tag, juce::Justification::centred);
+            const int midi = lowMidi + bin;
+            if (midi % 12 != 0) continue;                               // only C
+            const float y = r.getBottom() - (float) (bin + 1) * rowH;
+            const bool lit = (chordMask & 1) != 0;                      // pitch class C
+            g.setColour (juce::Colours::white.withAlpha (0.10f));
+            g.drawHorizontalLine ((int) y, r.getX(), r.getRight());
+            g.setColour ((lit ? juce::Colour (0xff2dffb0) : juce::Colours::white)
+                             .withAlpha (lit ? 0.9f : 0.45f));
+            g.drawText ("C" + juce::String (midi / 12 - 1),
+                        juce::Rectangle<float> (r.getX() + 3.0f, y - 6.0f, 26.0f, 12.0f),
+                        juce::Justification::centredLeft);
         }
     }
 
     juce::Image image;
     int numBins = 61, numCols = 512, lowMidi = 36;
     int chordMask = 0;
-    float vMin = -12.0f, vMax = 2.0f;
+    float vMin = -5.0f, vMax = 7.0f;   // feature spans ~-14 (silence) .. +7; bulk near +1
     float pulse = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SpectrogramDisplay)
